@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import httpx
@@ -45,7 +45,7 @@ def _within_days(dt: datetime | None, max_days: int) -> bool:
     # Normalize both datetimes to UTC-naive for comparison
     if dt.tzinfo is not None:
         # Convert timezone-aware to UTC, then remove timezone info
-        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     cutoff = datetime.utcnow() - timedelta(days=max_days)
     return dt >= cutoff
 

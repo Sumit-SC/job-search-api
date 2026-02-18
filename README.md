@@ -32,6 +32,8 @@ This is a separate scraper service intended to run on **Railway** (or any contai
 - Add more Playwright scrapers for remaining portals (Monster, Foundit, Glassdoor, Hirist, JobsAaj, TimesJobs, Shine, ZipRecruiter, SimplyHired, CareerBuilder, Dice, Adzuna, Jooble, Freshersworld).
 - Store results in a proper DB (Neon/Supabase Postgres) instead of a local JSON file.
 
+See **[SOURCES_STATUS.md](SOURCES_STATUS.md)** for the full list of 17–20 boards, what’s working, and the plan (RSS → headless → tests → UI).
+
 ## Run locally
 
 1. Create a venv and install deps:

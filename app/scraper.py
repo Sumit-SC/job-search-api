@@ -50,6 +50,16 @@ def _within_days(dt: datetime | None, max_days: int) -> bool:
     return dt >= cutoff
 
 
+def _matches_query(title: str, summary: str, query: str | None) -> bool:
+    """Lenient: no query = match all; else any query word OR any data-related keyword."""
+    if not query:
+        return True
+    text = f"{title} {summary}".lower()
+    query_words = query.lower().split()
+    data_kw = ["data", "analyst", "analytics", "bi", "business intelligence", "science", "engineer"]
+    return any(w in text for w in query_words) or any(k in text for k in data_kw)
+
+
 async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List[Job]:
     """
     Scrape WeWorkRemotely RSS feed.
@@ -64,22 +74,16 @@ async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List
 
         feed = feedparser.parse(xml)
         out: List[Job] = []
-        print(f"weworkremotely: Found {len(feed.entries)} RSS entries")
         for entry in feed.entries:
             title = getattr(entry, "title", "") or ""
             link = getattr(entry, "link", "") or ""
             summary = getattr(entry, "summary", "") or ""
             published = getattr(entry, "published", "") or ""
             dt = _parse_date(published)
-            # Temporarily disable date filtering to see all jobs
-            # if not _within_days(dt, days):
-            #     continue
-            # Temporarily disable query filtering to see all jobs
-            # text = f"{title} {summary}".lower()
-            # if query:
-            #     query_lower = query.lower()
-            #     if query_lower not in text and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-            #         continue
+            if not _within_days(dt, days):
+                continue
+            if not _matches_query(title, summary, query):
+                continue
             if not link:
                 continue
             job = Job(
@@ -119,14 +123,8 @@ async def scrape_jobscollider(days: int = 3, query: str | None = None) -> List[J
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -163,14 +161,8 @@ async def scrape_remoteok(days: int = 3, query: str | None = None) -> List[Job]:
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -214,10 +206,11 @@ async def scrape_remotive_api(days: int = 3, query: str | None = None) -> List[J
         dt = _parse_date(pub_date)
         if not _within_days(dt, days):
             continue
-        text = f"{item.get('title', '')} {item.get('description_plain', '') or item.get('description', '')}".lower()
-        if query and query.lower() not in text:
+        title = item.get("title", "")
+        desc = item.get("description_plain") or item.get("description", "")
+        if not _matches_query(title, desc or "", query):
             continue
-        
+
         job = Job(
             id=f"remotive_{item.get('id', hash(item.get('url', '')))}",
             title=item.get("title", ""),
@@ -257,8 +250,7 @@ async def scrape_remotive_rss(days: int = 3, query: str | None = None) -> List[J
                 dt = _parse_date(published)
                 if not _within_days(dt, days):
                     continue
-                text = f"{title} {summary}".lower()
-                if query and query.lower() not in text:
+                if not _matches_query(title, summary, query):
                     continue
                 if not link:
                     continue
@@ -301,8 +293,7 @@ async def scrape_wellfound(days: int = 3, query: str | None = None) -> List[Job]
                 dt = _parse_date(published)
                 if not _within_days(dt, days):
                     continue
-                text = f"{title} {summary}".lower()
-                if query and query.lower() not in text:
+                if not _matches_query(title, summary, query):
                     continue
                 if not link:
                     continue
@@ -345,8 +336,7 @@ async def scrape_indeed_rss(days: int = 3, query: str | None = None) -> List[Job
                 dt = _parse_date(published)
                 if not _within_days(dt, days):
                     continue
-                text = f"{title} {summary}".lower()
-                if query and query.lower() not in text:
+                if not _matches_query(title, summary, query):
                     continue
                 if not link:
                     continue
@@ -384,14 +374,8 @@ async def scrape_remote_co(days: int = 3, query: str | None = None) -> List[Job]
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -428,14 +412,8 @@ async def scrape_jobspresso(days: int = 3, query: str | None = None) -> List[Job
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -472,14 +450,8 @@ async def scrape_himalayas(days: int = 3, query: str | None = None) -> List[Job]
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -516,14 +488,8 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        # More lenient query filtering - check if query keywords appear anywhere
-        if query:
-            query_lower = query.lower()
-            query_words = query_lower.split()
-            text = f"{title} {summary}".lower()
-            # Match if any query word appears, or if it's a data-related job
-            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                continue
+        if not _matches_query(title, summary, query):
+            continue
         if not link:
             continue
         job = Job(
@@ -628,8 +594,7 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
             dt = _parse_date(item.get("date", ""))
             if not _within_days(dt, days):
                 continue
-            text = f"{item.get('title', '')} {item.get('company', '')}".lower()
-            if query and query.lower() not in text:
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
                 continue
             job = Job(
                 id=f"linkedin_{hash(item.get('url', ''))}",
@@ -728,8 +693,7 @@ async def scrape_indeed_headless(days: int = 3, query: str | None = None, browse
             dt = _parse_date(item.get("date", ""))
             if not _within_days(dt, days):
                 continue
-            text = f"{item.get('title', '')} {item.get('company', '')}".lower()
-            if query and query.lower() not in text:
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
                 continue
             job = Job(
                 id=f"indeed_headless_{hash(item.get('url', ''))}",
@@ -828,8 +792,7 @@ async def scrape_naukri(days: int = 3, query: str | None = None, browser: Option
             dt = _parse_date(item.get("date", ""))
             if not _within_days(dt, days):
                 continue
-            text = f"{item.get('title', '')} {item.get('company', '')}".lower()
-            if query and query.lower() not in text:
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
                 continue
             job = Job(
                 id=f"naukri_{hash(item.get('url', ''))}",

@@ -8,14 +8,28 @@ This is a separate scraper service intended to run on **Railway** (or any contai
   - `GET /health`
   - `GET /jobs` (reads from local JSON store)
   - `POST /refresh` (scrapes and writes jobs to JSON store)
-- **Current scrapers** are HTTP/RSS based (fast, stable):
+
+- **RSS/HTTP sources** (fast, stable, always active):
   - WeWorkRemotely RSS
   - RemoteOK RSS
   - Jobscollider RSS
+  - Remotive (API + RSS)
+  - Wellfound RSS (multiple feeds)
+  - Indeed RSS
+  - Remote.co RSS
+  - Jobspresso RSS
+  - Himalayas RSS
+  - Authentic Jobs RSS
+
+- **Playwright headless scrapers** (when `ENABLE_HEADLESS=1`):
+  - LinkedIn Jobs
+  - Indeed (headless browser)
+  - Naukri.com (India)
+  - More portals coming soon (Monster, Glassdoor, Hirist, etc.)
 
 ## What it will do next
 
-- Add **Playwright headless** scrapers for mainstream portals (LinkedIn, Naukri, Indeed, etc.) and save normalized results.
+- Add more Playwright scrapers for remaining portals (Monster, Foundit, Glassdoor, Hirist, JobsAaj, TimesJobs, Shine, ZipRecruiter, SimplyHired, CareerBuilder, Dice, Adzuna, Jooble, Freshersworld).
 - Store results in a proper DB (Neon/Supabase Postgres) instead of a local JSON file.
 
 ## Run locally

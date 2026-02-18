@@ -69,6 +69,55 @@ async def refresh_jobs(
     return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
 
 
+@app.get("/debug")
+async def debug_scrapers() -> dict:
+    """
+    Debug endpoint to test individual scrapers and see what's working.
+    """
+    import asyncio
+    from .scraper import (
+        scrape_weworkremotely,
+        scrape_jobscollider,
+        scrape_remoteok,
+        scrape_remotive_api,
+        scrape_indeed_rss,
+    )
+    
+    results = {}
+    test_query = "data analyst"
+    test_days = 7  # Use 7 days to get more results
+    
+    # Test a few key scrapers
+    scrapers = {
+        "weworkremotely": scrape_weworkremotely,
+        "jobscollider": scrape_jobscollider,
+        "remoteok": scrape_remoteok,
+        "remotive_api": scrape_remotive_api,
+        "indeed_rss": scrape_indeed_rss,
+    }
+    
+    for name, scraper_func in scrapers.items():
+        try:
+            jobs = await scraper_func(days=test_days, query=test_query)
+            results[name] = {
+                "ok": True,
+                "count": len(jobs),
+                "error": None,
+            }
+        except Exception as e:
+            results[name] = {
+                "ok": False,
+                "count": 0,
+                "error": str(e),
+            }
+    
+    return {
+        "ok": True,
+        "scrapers": results,
+        "total_jobs": sum(r["count"] for r in results.values()),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 

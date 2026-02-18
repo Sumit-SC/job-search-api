@@ -42,6 +42,10 @@ def _parse_date(value: str) -> datetime | None:
 def _within_days(dt: datetime | None, max_days: int) -> bool:
     if dt is None:
         return True
+    # Normalize both datetimes to UTC-naive for comparison
+    if dt.tzinfo is not None:
+        # Convert timezone-aware to UTC, then remove timezone info
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     cutoff = datetime.utcnow() - timedelta(days=max_days)
     return dt >= cutoff
 
@@ -60,21 +64,22 @@ async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List
 
         feed = feedparser.parse(xml)
         out: List[Job] = []
+        print(f"weworkremotely: Found {len(feed.entries)} RSS entries")
         for entry in feed.entries:
             title = getattr(entry, "title", "") or ""
             link = getattr(entry, "link", "") or ""
             summary = getattr(entry, "summary", "") or ""
             published = getattr(entry, "published", "") or ""
             dt = _parse_date(published)
-            if not _within_days(dt, days):
-                continue
-            # Make query filtering optional - if query provided, filter; otherwise include all
-            text = f"{title} {summary}".lower()
-            if query:
-                query_lower = query.lower()
-                # Check if query matches any relevant keywords (data, analyst, etc.)
-                if query_lower not in text and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
-                    continue
+            # Temporarily disable date filtering to see all jobs
+            # if not _within_days(dt, days):
+            #     continue
+            # Temporarily disable query filtering to see all jobs
+            # text = f"{title} {summary}".lower()
+            # if query:
+            #     query_lower = query.lower()
+            #     if query_lower not in text and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+            #         continue
             if not link:
                 continue
             job = Job(

@@ -56,13 +56,40 @@ curl -X POST "http://localhost:8000/refresh?q=data%20analyst&days=3"
 curl "http://localhost:8000/jobs?days=3&limit=50"
 ```
 
-## Deploy to Railway (outline)
+## Deploy to Railway
 
-- Create a new Railway project from this folder.
-- Set start command:
+### Step 1: Create Railway Project
+- Go to [Railway.app](https://railway.app) and create a new project
+- Select "Deploy from GitHub repo"
+- Choose `job-search-api` repository
 
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+### Step 2: Add Persistent Storage (Volume)
+Railway uses **Volumes** for persistent storage:
+
+**Method A - Command Palette:**
+1. Press `Ctrl+K` (or `Cmd+K` on Mac) in Railway dashboard
+2. Type "volume" and select "Create Volume"
+3. Select your `job-search-api` service
+4. Set mount path to: `/app/data`
+
+**Method B - Right-click:**
+1. Right-click on your service card in Railway dashboard
+2. Select "Create Volume" or "Add Volume"
+3. Set mount path to: `/app/data`
+
+### Step 3: Environment Variables
+In your Railway service settings, add:
+
+```
+JOBS_SCRAPER_DATA_DIR=/app/data
+ENABLE_HEADLESS=1
 ```
 
-- Optionally set `JOBS_SCRAPER_DATA_DIR=/data` (or use a DB).
+### Step 4: Deploy
+Railway will auto-detect the Dockerfile and deploy. The start command is already configured in the Dockerfile.
+
+### Step 5: Test
+Once deployed, test the API:
+- Health: `GET https://your-app.up.railway.app/health`
+- Refresh jobs: `POST https://your-app.up.railway.app/refresh?q=data%20analyst&days=3`
+- Get jobs: `GET https://your-app.up.railway.app/jobs?days=3&limit=50`

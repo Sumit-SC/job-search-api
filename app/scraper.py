@@ -52,39 +52,47 @@ async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List
     This is HTTP-only (no headless) but gives us solid remote analyst/BI roles.
     """
     url = "https://weworkremotely.com/remote-jobs.rss"
-    async with httpx.AsyncClient() as client:
-        xml = await fetch_text(client, url)
-    if not xml:
-        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            xml = await fetch_text(client, url)
+        if not xml:
+            return []
 
-    feed = feedparser.parse(xml)
-    out: List[Job] = []
-    for entry in feed.entries:
-        title = getattr(entry, "title", "") or ""
-        link = getattr(entry, "link", "") or ""
-        summary = getattr(entry, "summary", "") or ""
-        published = getattr(entry, "published", "") or ""
-        dt = _parse_date(published)
-        if not _within_days(dt, days):
-            continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
-        if not link:
-            continue
-        job = Job(
-            id=f"weworkremotely_{hash(link)}",
-            title=title,
-            company="Unknown",
-            location="Remote",
-            url=link,
-            description=summary,
-            source="weworkremotely",
-            date=dt,
-            tags=["rss"],
-        )
-        out.append(job)
-    return out
+        feed = feedparser.parse(xml)
+        out: List[Job] = []
+        for entry in feed.entries:
+            title = getattr(entry, "title", "") or ""
+            link = getattr(entry, "link", "") or ""
+            summary = getattr(entry, "summary", "") or ""
+            published = getattr(entry, "published", "") or ""
+            dt = _parse_date(published)
+            if not _within_days(dt, days):
+                continue
+            # Make query filtering optional - if query provided, filter; otherwise include all
+            text = f"{title} {summary}".lower()
+            if query:
+                query_lower = query.lower()
+                # Check if query matches any relevant keywords (data, analyst, etc.)
+                if query_lower not in text and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                    continue
+            if not link:
+                continue
+            job = Job(
+                id=f"weworkremotely_{hash(link)}",
+                title=title,
+                company="Unknown",
+                location="Remote",
+                url=link,
+                description=summary,
+                source="weworkremotely",
+                date=dt,
+                tags=["rss"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping weworkremotely: {e}")
+        return []
 
 
 async def scrape_jobscollider(days: int = 3, query: str | None = None) -> List[Job]:
@@ -106,9 +114,14 @@ async def scrape_jobscollider(days: int = 3, query: str | None = None) -> List[J
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -145,9 +158,14 @@ async def scrape_remoteok(days: int = 3, query: str | None = None) -> List[Job]:
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -361,9 +379,14 @@ async def scrape_remote_co(days: int = 3, query: str | None = None) -> List[Job]
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -400,9 +423,14 @@ async def scrape_jobspresso(days: int = 3, query: str | None = None) -> List[Job
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -439,9 +467,14 @@ async def scrape_himalayas(days: int = 3, query: str | None = None) -> List[Job]
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -478,9 +511,14 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
         dt = _parse_date(published)
         if not _within_days(dt, days):
             continue
-        text = f"{title} {summary}".lower()
-        if query and query.lower() not in text:
-            continue
+        # More lenient query filtering - check if query keywords appear anywhere
+        if query:
+            query_lower = query.lower()
+            query_words = query_lower.split()
+            text = f"{title} {summary}".lower()
+            # Match if any query word appears, or if it's a data-related job
+            if not any(word in text for word in query_words) and not any(kw in text for kw in ["data", "analyst", "analytics", "bi", "business intelligence"]):
+                continue
         if not link:
             continue
         job = Job(
@@ -849,7 +887,8 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                 finally:
                     await browser.close()
-        except Exception:
+        except Exception as e:
+            print(f"Headless scraping failed: {e}")
             # If headless fails, fall back to HTTP-only
             results = await asyncio.gather(*tasks[:len(tasks)], return_exceptions=True)
     else:
@@ -857,12 +896,17 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
     
     jobs: List[Job] = []
     seen = set()
-    for res in results:
+    error_count = 0
+    for i, res in enumerate(results):
         if isinstance(res, Exception):
+            error_count += 1
+            print(f"Scraper {i} failed: {res}")
             continue
         for job in res:
             if job.url in seen:
                 continue
             seen.add(job.url)
             jobs.append(job)
+    
+    print(f"Scraped {len(jobs)} jobs from {len(results) - error_count} sources ({error_count} errors)")
     return jobs

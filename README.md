@@ -95,7 +95,19 @@ ENABLE_HEADLESS=1
 Railway will auto-detect the Dockerfile and deploy. The start command is already configured in the Dockerfile.
 
 ### Step 5: Test
-Once deployed, test the API:
-- Health: `GET https://your-app.up.railway.app/health`
-- Refresh jobs: `POST https://your-app.up.railway.app/refresh?q=data%20analyst&days=3`
-- Get jobs: `GET https://your-app.up.railway.app/jobs?days=3&limit=50`
+Once deployed, test the API. From the repo (local or CI):
+
+**PowerShell (Windows):**
+```powershell
+cd job-search-api/scripts
+.\test_endpoints.ps1 https://your-app.up.railway.app
+```
+
+**Bash (Linux/macOS):**
+```bash
+cd job-search-api/scripts
+chmod +x test_endpoints.sh
+./test_endpoints.sh https://your-app.up.railway.app
+```
+
+**Manual curls:** Health `GET /health`; RSS scrapers `GET /debug`; headless scrapers `GET /debug/headless`; refresh `POST /refresh?days=3&headless=0` (RSS-only) or `POST /refresh?days=3`; list `GET /jobs?limit=50`.

@@ -26,3 +26,7 @@ class JobsResponse(BaseModel):
     ok: bool = True
     count: int
     jobs: List[Job]
+    # Pagination (optional; set when page/per_page are used)
+    total: Optional[int] = None
+    page: Optional[int] = None
+    per_page: Optional[int] = None

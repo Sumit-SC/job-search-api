@@ -1,0 +1,13 @@
+# Avoid copying local data and caches into the image
+data/
+__pycache__/
+*.pyc
+.git
+.gitignore
+.env
+.env.*
+*.md
+!README.md
+.pytest_cache
+.venv
+venv/

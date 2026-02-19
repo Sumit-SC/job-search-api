@@ -1,5 +1,9 @@
 # Jobs Scraper (Railway) – FastAPI + Playwright (planned)
 
+**What this project is:** The **main Python job scraper** (FastAPI + Playwright): 11+ RSS/HTTP sources and optional headless scrapers (LinkedIn, Indeed, Naukri). Intended for **Railway** or any container host. Not used by the current Vercel + frontend; that uses **playground-serveless** job APIs. See [JOBS-SCRAPER.md](../JOBS-SCRAPER.md) in the base directory.
+
+---
+
 This is a separate scraper service intended to run on **Railway** (or any container host) where headless browsing works reliably.
 
 ## What it does (today)

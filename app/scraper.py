@@ -51,13 +51,50 @@ def _within_days(dt: datetime | None, max_days: int) -> bool:
 
 
 def _matches_query(title: str, summary: str, query: str | None) -> bool:
-    """Lenient: no query = match all; else any query word OR any data-related keyword."""
+    """
+    Very lenient matching: 
+    - No query = match all
+    - Generic queries like "data analyst" = match if ANY data-related keyword OR skill keyword appears
+    - Specific queries = match query words OR data/skill keywords
+    - Always include jobs with data/analyst/analytics/BI/science keywords regardless of query
+    """
     if not query:
         return True
+    
     text = f"{title} {summary}".lower()
-    query_words = query.lower().split()
-    data_kw = ["data", "analyst", "analytics", "bi", "business intelligence", "science", "engineer"]
-    return any(w in text for w in query_words) or any(k in text for k in data_kw)
+    query_lower = query.lower().strip()
+    query_words = query_lower.split()
+    
+    # Data/analyst keywords (always match these regardless of query)
+    data_kw = [
+        "data", "analyst", "analytics", "bi", "business intelligence",
+        "science", "engineer", "scientist", "intelligence", "insights",
+        "reporting", "metrics", "kpi", "dashboard",
+    ]
+    
+    # Skill keywords (for skill-based matching - don't miss non-"data" roles)
+    skill_kw = [
+        "python", "sql", "tableau", "power bi", "looker", "visualization",
+        "machine learning", "ml modeling", "statistics", "a/b testing",
+        "experimentation", "reporting", "dashboards", "etl", "data pipeline",
+        "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch",
+        "excel", "spreadsheet", "r language", "r programming",
+    ]
+    
+    # If query is generic ("data analyst", "analyst", "data"), be very lenient
+    generic_queries = ["data analyst", "analyst", "data", "analytics"]
+    is_generic = any(gq in query_lower for gq in generic_queries) or len(query_words) <= 2
+    
+    # Always match if data/skill keywords appear (very lenient)
+    if any(k in text for k in data_kw) or any(sk in text for sk in skill_kw):
+        return True
+    
+    # If generic query, match almost everything with data context
+    if is_generic:
+        return True  # Very lenient for generic queries
+    
+    # For specific queries, match query words
+    return any(w in text for w in query_words)
 
 
 async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List[Job]:
@@ -469,6 +506,128 @@ async def scrape_himalayas(days: int = 3, query: str | None = None) -> List[Job]
     return out
 
 
+async def scrape_remotive_data_feed(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape Remotive Data category RSS feed.
+    """
+    url = "https://remotive.com/remote-jobs/feed/data"
+    async with httpx.AsyncClient() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    out: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", "") or ""
+        published = getattr(entry, "published", "") or ""
+        dt = _parse_date(published)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        job = Job(
+            id=f"remotive_data_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary,
+            source="remotive_data",
+            date=dt,
+            tags=["rss"],
+        )
+        out.append(job)
+    return out
+
+
+async def scrape_remotive_ai_ml_feed(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape Remotive AI/ML category RSS feed.
+    """
+    url = "https://remotive.com/remote-jobs/feed/ai-ml"
+    async with httpx.AsyncClient() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    out: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", "") or ""
+        published = getattr(entry, "published", "") or ""
+        dt = _parse_date(published)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        job = Job(
+            id=f"remotive_ai_ml_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary,
+            source="remotive_ai_ml",
+            date=dt,
+            tags=["rss"],
+        )
+        out.append(job)
+    return out
+
+
+async def scrape_stackoverflow_jobs(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape Stack Overflow Jobs RSS feed.
+    """
+    search_query = query or "data analyst"
+    url = f"https://stackoverflow.com/jobs/feed?q={search_query.replace(' ', '+')}&l=remote&d=20&u=Km"
+    async with httpx.AsyncClient() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    out: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", "") or ""
+        published = getattr(entry, "published", "") or ""
+        dt = _parse_date(published)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        # Extract company from title (Stack Overflow format: "Job Title - Company Name")
+        company = "Unknown"
+        if " - " in title:
+            parts = title.split(" - ", 1)
+            if len(parts) == 2:
+                title = parts[0].strip()
+                company = parts[1].strip()
+        job = Job(
+            id=f"stackoverflow_{hash(link)}",
+            title=title,
+            company=company,
+            location="Remote",
+            url=link,
+            description=summary,
+            source="stackoverflow",
+            date=dt,
+            tags=["rss"],
+        )
+        out.append(job)
+    return out
+
+
 async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List[Job]:
     """
     Scrape Authentic Jobs RSS feed.
@@ -511,9 +670,11 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
 # Playwright-based headless scrapers (for portals without RSS/API)
 # ============================================================================
 
-async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Optional[Browser] = None) -> List[Job]:
+async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
     """
     Scrape LinkedIn Jobs using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    Scrolls and paginates to get more results.
     Note: LinkedIn may block bots, so this may not always work.
     """
     if not PLAYWRIGHT_AVAILABLE:
@@ -523,6 +684,7 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
     url = f"https://www.linkedin.com/jobs/search?keywords={search_query.replace(' ', '%20')}&location=remote&f_TPR=r259200&f_E=2,3&f_TP=1"
     
     try:
+        should_close_browser = browser is None
         if browser is None:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
@@ -530,63 +692,116 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_selector(".jobs-search__results-list, [data-test-id='job-card']", timeout=15000)
                 
-                jobs_data = await page.evaluate("""
-                    () => {
+                # Scroll and paginate to get more results
+                jobs_data = []
+                seen_urls = set()
+                scroll_attempts = 0
+                max_scrolls = 10  # Scroll up to 10 times
+                
+                while len(jobs_data) < max_results and scroll_attempts < max_scrolls:
+                    # Scroll to load more
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)  # Wait for lazy loading
+                    
+                    # Extract jobs from current view
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('li[class*="job"], [data-test-id="job-card"]');
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/jobs/view/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.linkedin.com' + href : href;
+                                
+                                // Skip duplicates
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                
+                                const companyEl = card.querySelector('.job-search-card__subtitle, [class*="company"]');
+                                const locationEl = card.querySelector('.job-search-card__location, [class*="location"]');
+                                const timeEl = card.querySelector('.job-search-card__listdate, time');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locationEl ? locationEl.textContent.trim() : 'Remote',
+                                    url: fullUrl,
+                                    date: timeEl ? (timeEl.getAttribute('datetime') || timeEl.textContent.trim()) : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    # Add new unique jobs
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    scroll_attempts += 1
+                    if len(new_jobs) == 0:  # No new jobs found, stop scrolling
+                        break
+                
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".jobs-search__results-list, [data-test-id='job-card']", timeout=15000)
+            
+            # Scroll and paginate
+            jobs_data = []
+            seen_urls = set()
+            scroll_attempts = 0
+            max_scrolls = 10
+            
+            while len(jobs_data) < max_results and scroll_attempts < max_scrolls:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
                         const jobs = [];
                         const cards = document.querySelectorAll('li[class*="job"], [data-test-id="job-card"]');
-                        for (const card of cards) {
+                        for (const card of cards) {{
                             const link = card.querySelector('a[href*="/jobs/view/"]');
                             if (!link) continue;
                             const title = (link.textContent || '').trim();
                             if (!title) continue;
                             const href = link.getAttribute('href') || '';
                             const fullUrl = href.startsWith('/') ? 'https://www.linkedin.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
                             const companyEl = card.querySelector('.job-search-card__subtitle, [class*="company"]');
                             const locationEl = card.querySelector('.job-search-card__location, [class*="location"]');
                             const timeEl = card.querySelector('.job-search-card__listdate, time');
-                            jobs.push({
+                            jobs.push({{
                                 title,
                                 company: companyEl ? companyEl.textContent.trim() : 'Unknown',
                                 location: locationEl ? locationEl.textContent.trim() : 'Remote',
                                 url: fullUrl,
                                 date: timeEl ? (timeEl.getAttribute('datetime') || timeEl.textContent.trim()) : '',
-                            });
-                            if (jobs.length >= 30) break;
-                        }
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
                         return jobs;
-                    }
+                    }}
                 """)
-                await browser.close()
-        else:
-            page = await browser.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_selector(".jobs-search__results-list, [data-test-id='job-card']", timeout=15000)
-            jobs_data = await page.evaluate("""
-                () => {
-                    const jobs = [];
-                    const cards = document.querySelectorAll('li[class*="job"], [data-test-id="job-card"]');
-                    for (const card of cards) {
-                        const link = card.querySelector('a[href*="/jobs/view/"]');
-                        if (!link) continue;
-                        const title = (link.textContent || '').trim();
-                        if (!title) continue;
-                        const href = link.getAttribute('href') || '';
-                        const fullUrl = href.startsWith('/') ? 'https://www.linkedin.com' + href : href;
-                        const companyEl = card.querySelector('.job-search-card__subtitle, [class*="company"]');
-                        const locationEl = card.querySelector('.job-search-card__location, [class*="location"]');
-                        const timeEl = card.querySelector('.job-search-card__listdate, time');
-                        jobs.push({
-                            title,
-                            company: companyEl ? companyEl.textContent.trim() : 'Unknown',
-                            location: locationEl ? locationEl.textContent.trim() : 'Remote',
-                            url: fullUrl,
-                            date: timeEl ? (timeEl.getAttribute('datetime') || timeEl.textContent.trim()) : '',
-                        });
-                        if (jobs.length >= 30) break;
-                    }
-                    return jobs;
-                }
-            """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                scroll_attempts += 1
+                if len(new_jobs) == 0:
+                    break
+            
             await page.close()
         
         out: List[Job] = []
@@ -613,9 +828,11 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
         return []
 
 
-async def scrape_indeed_headless(days: int = 3, query: str | None = None, browser: Optional[Browser] = None) -> List[Job]:
+async def scrape_indeed_headless(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
     """
     Scrape Indeed Jobs using Playwright (headless browser).
+    Fetches as many results as possible (up to max_results, default 200).
+    Scrolls and paginates through multiple pages.
     """
     if not PLAYWRIGHT_AVAILABLE:
         return []
@@ -631,61 +848,125 @@ async def scrape_indeed_headless(days: int = 3, query: str | None = None, browse
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_selector(".job_seen_beacon, .jobCard", timeout=15000)
                 
-                jobs_data = await page.evaluate("""
-                    () => {
-                        const jobs = [];
-                        const cards = document.querySelectorAll('.job_seen_beacon, .jobCard');
-                        for (const card of cards) {
-                            const titleEl = card.querySelector('h2.jobTitle a, a[data-jk]');
-                            if (!titleEl) continue;
-                            const title = (titleEl.textContent || '').trim();
-                            const href = titleEl.getAttribute('href') || '';
-                            const fullUrl = href.startsWith('/') ? 'https://www.indeed.com' + href : href;
-                            const companyEl = card.querySelector('.companyName, [data-testid="company-name"]');
-                            const locationEl = card.querySelector('.companyLocation, [data-testid="text-location"]');
-                            const dateEl = card.querySelector('.date, [data-testid="myJobsStateDate"]');
-                            jobs.push({
-                                title,
-                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
-                                location: locationEl ? locationEl.textContent.trim() : 'Remote',
-                                url: fullUrl,
-                                date: dateEl ? dateEl.textContent.trim() : '',
-                            });
-                            if (jobs.length >= 30) break;
-                        }
-                        return jobs;
-                    }
-                """)
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10  # Try up to 10 pages
+                
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    # Scroll to load more
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    # Extract jobs
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.job_seen_beacon, .jobCard');
+                            for (const card of cards) {{
+                                const titleEl = card.querySelector('h2.jobTitle a, a[data-jk]');
+                                if (!titleEl) continue;
+                                const title = (titleEl.textContent || '').trim();
+                                const href = titleEl.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.indeed.com' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.companyName, [data-testid="company-name"]');
+                                const locationEl = card.querySelector('.companyLocation, [data-testid="text-location"]');
+                                const dateEl = card.querySelector('.date, [data-testid="myJobsStateDate"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locationEl ? locationEl.textContent.trim() : 'Remote',
+                                    url: fullUrl,
+                                    date: dateEl ? dateEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    # Try to go to next page
+                    try:
+                        next_button = await page.query_selector('a[aria-label="Next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".job_seen_beacon, .jobCard", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break  # No more pages
+                
                 await browser.close()
         else:
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_selector(".job_seen_beacon, .jobCard", timeout=15000)
-            jobs_data = await page.evaluate("""
-                () => {
-                    const jobs = [];
-                    const cards = document.querySelectorAll('.job_seen_beacon, .jobCard');
-                    for (const card of cards) {
-                        const titleEl = card.querySelector('h2.jobTitle a, a[data-jk]');
-                        if (!titleEl) continue;
-                        const title = (titleEl.textContent || '').trim();
-                        const href = titleEl.getAttribute('href') || '';
-                        const fullUrl = href.startsWith('/') ? 'https://www.indeed.com' + href : href;
-                        const companyEl = card.querySelector('.companyName, [data-testid="company-name"]');
-                        const locationEl = card.querySelector('.companyLocation, [data-testid="text-location"]');
-                        const dateEl = card.querySelector('.date, [data-testid="myJobsStateDate"]');
-                        jobs.push({
-                            title,
-                            company: companyEl ? companyEl.textContent.trim() : 'Unknown',
-                            location: locationEl ? locationEl.textContent.trim() : 'Remote',
-                            url: fullUrl,
-                            date: dateEl ? dateEl.textContent.trim() : '',
-                        });
-                        if (jobs.length >= 30) break;
-                    }
-                    return jobs;
-                }
-            """)
+            
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+            
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.job_seen_beacon, .jobCard');
+                        for (const card of cards) {{
+                            const titleEl = card.querySelector('h2.jobTitle a, a[data-jk]');
+                            if (!titleEl) continue;
+                            const title = (titleEl.textContent || '').trim();
+                            const href = titleEl.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.indeed.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.companyName, [data-testid="company-name"]');
+                            const locationEl = card.querySelector('.companyLocation, [data-testid="text-location"]');
+                            const dateEl = card.querySelector('.date, [data-testid="myJobsStateDate"]');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locationEl ? locationEl.textContent.trim() : 'Remote',
+                                url: fullUrl,
+                                date: dateEl ? dateEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                try:
+                    next_button = await page.query_selector('a[aria-label="Next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".job_seen_beacon, .jobCard", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+            
             await page.close()
         
         out: List[Job] = []
@@ -712,9 +993,11 @@ async def scrape_indeed_headless(days: int = 3, query: str | None = None, browse
         return []
 
 
-async def scrape_naukri(days: int = 3, query: str | None = None, browser: Optional[Browser] = None) -> List[Job]:
+async def scrape_naukri(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
     """
     Scrape Naukri.com (India) using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    Scrolls and paginates through multiple pages.
     """
     if not PLAYWRIGHT_AVAILABLE:
         return []
@@ -730,61 +1013,125 @@ async def scrape_naukri(days: int = 3, query: str | None = None, browser: Option
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_selector(".jobTuple, .jobCard", timeout=15000)
                 
-                jobs_data = await page.evaluate("""
-                    () => {
-                        const jobs = [];
-                        const cards = document.querySelectorAll('.jobTuple, .jobCard');
-                        for (const card of cards) {
-                            const titleEl = card.querySelector('a.title, .jobTitle a');
-                            if (!titleEl) continue;
-                            const title = (titleEl.textContent || '').trim();
-                            const href = titleEl.getAttribute('href') || '';
-                            const fullUrl = href.startsWith('/') ? 'https://www.naukri.com' + href : href;
-                            const companyEl = card.querySelector('.companyName, .comp-name');
-                            const locationEl = card.querySelector('.locWdth, .location');
-                            const dateEl = card.querySelector('.date, .posted');
-                            jobs.push({
-                                title,
-                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
-                                location: locationEl ? locationEl.textContent.trim() : 'India',
-                                url: fullUrl,
-                                date: dateEl ? dateEl.textContent.trim() : '',
-                            });
-                            if (jobs.length >= 30) break;
-                        }
-                        return jobs;
-                    }
-                """)
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10  # Try up to 10 pages
+                
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    # Scroll to load more
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    # Extract jobs
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.jobTuple, .jobCard');
+                            for (const card of cards) {{
+                                const titleEl = card.querySelector('a.title, .jobTitle a');
+                                if (!titleEl) continue;
+                                const title = (titleEl.textContent || '').trim();
+                                const href = titleEl.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.naukri.com' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.companyName, .comp-name');
+                                const locationEl = card.querySelector('.locWdth, .location');
+                                const dateEl = card.querySelector('.date, .posted');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locationEl ? locationEl.textContent.trim() : 'India',
+                                    url: fullUrl,
+                                    date: dateEl ? dateEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    # Try to go to next page
+                    try:
+                        next_button = await page.query_selector('a[class*="next"], a[title*="Next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".jobTuple, .jobCard", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break  # No more pages
+                
                 await browser.close()
         else:
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_selector(".jobTuple, .jobCard", timeout=15000)
-            jobs_data = await page.evaluate("""
-                () => {
-                    const jobs = [];
-                    const cards = document.querySelectorAll('.jobTuple, .jobCard');
-                    for (const card of cards) {
-                        const titleEl = card.querySelector('a.title, .jobTitle a');
-                        if (!titleEl) continue;
-                        const title = (titleEl.textContent || '').trim();
-                        const href = titleEl.getAttribute('href') || '';
-                        const fullUrl = href.startsWith('/') ? 'https://www.naukri.com' + href : href;
-                        const companyEl = card.querySelector('.companyName, .comp-name');
-                        const locationEl = card.querySelector('.locWdth, .location');
-                        const dateEl = card.querySelector('.date, .posted');
-                        jobs.push({
-                            title,
-                            company: companyEl ? companyEl.textContent.trim() : 'Unknown',
-                            location: locationEl ? locationEl.textContent.trim() : 'India',
-                            url: fullUrl,
-                            date: dateEl ? dateEl.textContent.trim() : '',
-                        });
-                        if (jobs.length >= 30) break;
-                    }
-                    return jobs;
-                }
-            """)
+            
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+            
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.jobTuple, .jobCard');
+                        for (const card of cards) {{
+                            const titleEl = card.querySelector('a.title, .jobTitle a');
+                            if (!titleEl) continue;
+                            const title = (titleEl.textContent || '').trim();
+                            const href = titleEl.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.naukri.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.companyName, .comp-name');
+                            const locationEl = card.querySelector('.locWdth, .location');
+                            const dateEl = card.querySelector('.date, .posted');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locationEl ? locationEl.textContent.trim() : 'India',
+                                url: fullUrl,
+                                date: dateEl ? dateEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                try:
+                    next_button = await page.query_selector('a[class*="next"], a[title*="Next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".jobTuple, .jobCard", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+            
             await page.close()
         
         out: List[Job] = []
@@ -811,6 +1158,850 @@ async def scrape_naukri(days: int = 3, query: str | None = None, browser: Option
         return []
 
 
+async def scrape_hirist(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
+    """
+    Scrape Hirist.com (India) using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return []
+    
+    search_query = query or "data analyst"
+    slug = search_query.lower().replace(" ", "-")
+    url = f"https://hirist.com/jobs/{slug}-jobs"
+    
+    try:
+        if browser is None:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_selector(".job-card, .job-item, [data-job-id], a[href*='/job/']", timeout=15000)
+                
+                jobs_data = []
+                seen_urls = set()
+                scroll_attempts = 0
+                max_scrolls = 10
+                
+                while len(jobs_data) < max_results and scroll_attempts < max_scrolls:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.job-card, .job-item, [data-job-id]');
+                            if (cards.length === 0) {{
+                                const links = document.querySelectorAll('a[href*="/job/"]');
+                                links.forEach((a) => {{
+                                    const title = (a.textContent || '').trim();
+                                    if (title.length < 5) return;
+                                    const href = a.getAttribute('href') || '';
+                                    const url = href.startsWith('http') ? href : 'https://hirist.com' + href;
+                                    const row = a.closest('tr, .row, li, div[class*="card"]');
+                                    const companyEl = row ? row.querySelector('.company-name, .company, [class*="company"]') : null;
+                                    if (!jobs.some(j => j.url === url)) {{
+                                        jobs.push({{
+                                            title,
+                                            company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                            location: 'India',
+                                            url,
+                                            date: '',
+                                        }});
+                                    }}
+                                }});
+                            }} else {{
+                                for (const card of cards) {{
+                                    const link = card.querySelector('a[href*="/job/"]');
+                                    if (!link) continue;
+                                    const title = (link.textContent || '').trim();
+                                    if (!title) continue;
+                                    const href = link.getAttribute('href') || '';
+                                    const fullUrl = href.startsWith('http') ? href : 'https://hirist.com' + href;
+                                    if (jobs.some(j => j.url === fullUrl)) continue;
+                                    const companyEl = card.querySelector('.company-name, [class*="company"]');
+                                    jobs.push({{
+                                        title,
+                                        company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                        location: 'India',
+                                        url: fullUrl,
+                                        date: '',
+                                    }});
+                                    if (jobs.length >= {max_results}) break;
+                                }}
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    scroll_attempts += 1
+                    if len(new_jobs) == 0:
+                        break
+                
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".job-card, .job-item, [data-job-id], a[href*='/job/']", timeout=15000)
+            
+            jobs_data = []
+            seen_urls = set()
+            scroll_attempts = 0
+            max_scrolls = 10
+            
+            while len(jobs_data) < max_results and scroll_attempts < max_scrolls:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.job-card, .job-item, [data-job-id]');
+                        if (cards.length === 0) {{
+                            const links = document.querySelectorAll('a[href*="/job/"]');
+                            links.forEach((a) => {{
+                                const title = (a.textContent || '').trim();
+                                if (title.length < 5) return;
+                                const href = a.getAttribute('href') || '';
+                                const url = href.startsWith('http') ? href : 'https://hirist.com' + href;
+                                const row = a.closest('tr, .row, li, div[class*="card"]');
+                                const companyEl = row ? row.querySelector('.company-name, .company, [class*="company"]') : null;
+                                if (!jobs.some(j => j.url === url)) {{
+                                    jobs.push({{
+                                        title,
+                                        company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                        location: 'India',
+                                        url,
+                                        date: '',
+                                    }});
+                                }}
+                            }});
+                        }} else {{
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/job/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('http') ? href : 'https://hirist.com' + href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.company-name, [class*="company"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: 'India',
+                                    url: fullUrl,
+                                    date: '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                scroll_attempts += 1
+                if len(new_jobs) == 0:
+                    break
+            
+            await page.close()
+        
+        out: List[Job] = []
+        for item in jobs_data:
+            dt = _parse_date(item.get("date", ""))
+            if dt and not _within_days(dt, days):
+                continue
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                continue
+            job = Job(
+                id=f"hirist_{hash(item.get('url', ''))}",
+                title=item.get("title", ""),
+                company=item.get("company", "Unknown"),
+                location=item.get("location", "India"),
+                url=item.get("url", ""),
+                description="",
+                source="hirist",
+                date=dt,
+                tags=["headless"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping hirist: {e}")
+        return []
+
+
+async def scrape_foundit(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
+    """
+    Scrape Foundit.in (India) using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return []
+    
+    search_query = query or "data analyst"
+    url = f"https://www.foundit.in/search/data-analyst-jobs?query={search_query.replace(' ', '%20')}"
+    
+    try:
+        if browser is None:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_selector(".jobCard, .job-item", timeout=15000)
+                
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10
+                
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.jobCard, .job-item');
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/job/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.foundit.in' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.company-name, [class*="company"]');
+                                const locEl = card.querySelector('.location, [class*="loc"]');
+                                const timeEl = card.querySelector('.posted-date, [class*="date"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locEl ? locEl.textContent.trim() : 'India',
+                                    url: fullUrl,
+                                    date: timeEl ? timeEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    try:
+                        next_button = await page.query_selector('a[class*="next"], button[class*="next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".jobCard, .job-item", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break
+                
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".jobCard, .job-item", timeout=15000)
+            
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+            
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.jobCard, .job-item');
+                        for (const card of cards) {{
+                            const link = card.querySelector('a[href*="/job/"]');
+                            if (!link) continue;
+                            const title = (link.textContent || '').trim();
+                            if (!title) continue;
+                            const href = link.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.foundit.in' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.company-name, [class*="company"]');
+                            const locEl = card.querySelector('.location, [class*="loc"]');
+                            const timeEl = card.querySelector('.posted-date, [class*="date"]');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locEl ? locEl.textContent.trim() : 'India',
+                                url: fullUrl,
+                                date: timeEl ? timeEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                try:
+                    next_button = await page.query_selector('a[class*="next"], button[class*="next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".jobCard, .job-item", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+            
+            await page.close()
+        
+        out: List[Job] = []
+        for item in jobs_data:
+            dt = _parse_date(item.get("date", ""))
+            if dt and not _within_days(dt, days):
+                continue
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                continue
+            job = Job(
+                id=f"foundit_{hash(item.get('url', ''))}",
+                title=item.get("title", ""),
+                company=item.get("company", "Unknown"),
+                location=item.get("location", "India"),
+                url=item.get("url", ""),
+                description="",
+                source="foundit",
+                date=dt,
+                tags=["headless"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping foundit: {e}")
+        return []
+
+
+async def scrape_shine(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
+    """
+    Scrape Shine.com (India) using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return []
+
+    search_query = query or "data analyst"
+    slug = search_query.lower().replace(" ", "-")
+    url = f"https://www.shine.com/job-search/{slug}-jobs"
+
+    try:
+        if browser is None:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_selector(".jobCard, .job-listing, [class*='job-card']", timeout=15000)
+
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10
+
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.jobCard, .job-listing, [class*="job-card"]');
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/job/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.shine.com' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.company-name, [class*="company"]');
+                                const locEl = card.querySelector('.location, [class*="loc"]');
+                                const timeEl = card.querySelector('.posted-date, [class*="date"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locEl ? locEl.textContent.trim() : 'India',
+                                    url: fullUrl,
+                                    date: timeEl ? timeEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+
+                    for job in new_jobs:
+                        if job["url"] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job["url"])
+                            if len(jobs_data) >= max_results:
+                                break
+
+                    try:
+                        next_button = await page.query_selector('a[class*="next"], button[class*="next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".jobCard, .job-listing, [class*='job-card']", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break
+
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".jobCard, .job-listing, [class*='job-card']", timeout=15000)
+
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.jobCard, .job-listing, [class*="job-card"]');
+                        for (const card of cards) {{
+                            const link = card.querySelector('a[href*="/job/"]');
+                            if (!link) continue;
+                            const title = (link.textContent || '').trim();
+                            if (!title) continue;
+                            const href = link.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.shine.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.company-name, [class*="company"]');
+                            const locEl = card.querySelector('.location, [class*="loc"]');
+                            const timeEl = card.querySelector('.posted-date, [class*="date"]');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locEl ? locEl.textContent.trim() : 'India',
+                                url: fullUrl,
+                                date: timeEl ? timeEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+
+                for job in new_jobs:
+                    if job["url"] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job["url"])
+                        if len(jobs_data) >= max_results:
+                            break
+
+                try:
+                    next_button = await page.query_selector('a[class*="next"], button[class*="next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".jobCard, .job-listing, [class*='job-card']", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+
+            await page.close()
+
+        out: List[Job] = []
+        for item in jobs_data:
+            dt = _parse_date(item.get("date", ""))
+            if dt and not _within_days(dt, days):
+                continue
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                continue
+            job = Job(
+                id=f"shine_{hash(item.get('url', ''))}",
+                title=item.get("title", ""),
+                company=item.get("company", "Unknown"),
+                location=item.get("location", "India"),
+                url=item.get("url", ""),
+                description="",
+                source="shine",
+                date=dt,
+                tags=["headless"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping shine: {e}")
+        return []
+
+
+async def scrape_monster(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
+    """
+    Scrape Monster.com using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return []
+    
+    search_query = query or "data analyst"
+    url = f"https://www.monster.com/jobs/search/?q={search_query.replace(' ', '+')}&where=remote&postedDate=3"
+    
+    try:
+        if browser is None:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_selector(".results-card, [data-test-id='job-card']", timeout=15000)
+                
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10
+                
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.results-card, [data-test-id="job-card"]');
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/job/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.monster.com' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.company, [class*="company"]');
+                                const locEl = card.querySelector('.location, [class*="location"]');
+                                const timeEl = card.querySelector('.posted, [class*="posted"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locEl ? locEl.textContent.trim() : '',
+                                    url: fullUrl,
+                                    date: timeEl ? timeEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    try:
+                        next_button = await page.query_selector('a[aria-label="Next"], button[aria-label="Next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".results-card, [data-test-id='job-card']", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break
+                
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".results-card, [data-test-id='job-card']", timeout=15000)
+            
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+            
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.results-card, [data-test-id="job-card"]');
+                        for (const card of cards) {{
+                            const link = card.querySelector('a[href*="/job/"]');
+                            if (!link) continue;
+                            const title = (link.textContent || '').trim();
+                            if (!title) continue;
+                            const href = link.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.monster.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.company, [class*="company"]');
+                            const locEl = card.querySelector('.location, [class*="location"]');
+                            const timeEl = card.querySelector('.posted, [class*="posted"]');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locEl ? locEl.textContent.trim() : '',
+                                url: fullUrl,
+                                date: timeEl ? timeEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                try:
+                    next_button = await page.query_selector('a[aria-label="Next"], button[aria-label="Next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".results-card, [data-test-id='job-card']", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+            
+            await page.close()
+        
+        out: List[Job] = []
+        for item in jobs_data:
+            dt = _parse_date(item.get("date", ""))
+            if dt and not _within_days(dt, days):
+                continue
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                continue
+            job = Job(
+                id=f"monster_{hash(item.get('url', ''))}",
+                title=item.get("title", ""),
+                company=item.get("company", "Unknown"),
+                location=item.get("location", "Remote"),
+                url=item.get("url", ""),
+                description="",
+                source="monster",
+                date=dt,
+                tags=["headless"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping monster: {e}")
+        return []
+
+
+async def scrape_glassdoor(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
+    """
+    Scrape Glassdoor.com using Playwright.
+    Fetches as many results as possible (up to max_results, default 200).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return []
+    
+    search_query = query or "data analyst"
+    url = f"https://www.glassdoor.com/Job/jobs.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword={search_query.replace(' ', '+')}&sc.keyword={search_query.replace(' ', '+')}&locT=C&locId=1147401&jobType=&fromAge=3"
+    
+    try:
+        if browser is None:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_selector(".react-job-listing, [data-test='job-listing']", timeout=15000)
+                
+                jobs_data = []
+                seen_urls = set()
+                page_num = 0
+                max_pages = 10
+                
+                while len(jobs_data) < max_results and page_num < max_pages:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+                    
+                    new_jobs = await page.evaluate(f"""
+                        () => {{
+                            const jobs = [];
+                            const cards = document.querySelectorAll('.react-job-listing, [data-test="job-listing"]');
+                            for (const card of cards) {{
+                                const link = card.querySelector('a[href*="/partner/"], a[href*="/Job/"]');
+                                if (!link) continue;
+                                const title = (link.textContent || '').trim();
+                                if (!title) continue;
+                                const href = link.getAttribute('href') || '';
+                                const fullUrl = href.startsWith('/') ? 'https://www.glassdoor.com' + href : href;
+                                if (jobs.some(j => j.url === fullUrl)) continue;
+                                const companyEl = card.querySelector('.job-search-key-lmzjyg, [class*="company"]');
+                                const locEl = card.querySelector('.job-search-key-1m2z0jx, [class*="location"]');
+                                const timeEl = card.querySelector('.job-search-key-1erf0ry, [class*="date"]');
+                                jobs.push({{
+                                    title,
+                                    company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                    location: locEl ? locEl.textContent.trim() : '',
+                                    url: fullUrl,
+                                    date: timeEl ? timeEl.textContent.trim() : '',
+                                }});
+                                if (jobs.length >= {max_results}) break;
+                            }}
+                            return jobs;
+                        }}
+                    """)
+                    
+                    for job in new_jobs:
+                        if job['url'] not in seen_urls:
+                            jobs_data.append(job)
+                            seen_urls.add(job['url'])
+                            if len(jobs_data) >= max_results:
+                                break
+                    
+                    try:
+                        next_button = await page.query_selector('button[aria-label="Next"], a[aria-label="Next"]')
+                        if next_button and len(jobs_data) < max_results:
+                            await next_button.click()
+                            await page.wait_for_selector(".react-job-listing, [data-test='job-listing']", timeout=10000)
+                            await asyncio.sleep(2)
+                            page_num += 1
+                        else:
+                            break
+                    except Exception:
+                        break
+                
+                await browser.close()
+        else:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector(".react-job-listing, [data-test='job-listing']", timeout=15000)
+            
+            jobs_data = []
+            seen_urls = set()
+            page_num = 0
+            max_pages = 10
+            
+            while len(jobs_data) < max_results and page_num < max_pages:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(2)
+                
+                new_jobs = await page.evaluate(f"""
+                    () => {{
+                        const jobs = [];
+                        const cards = document.querySelectorAll('.react-job-listing, [data-test="job-listing"]');
+                        for (const card of cards) {{
+                            const link = card.querySelector('a[href*="/partner/"], a[href*="/Job/"]');
+                            if (!link) continue;
+                            const title = (link.textContent || '').trim();
+                            if (!title) continue;
+                            const href = link.getAttribute('href') || '';
+                            const fullUrl = href.startsWith('/') ? 'https://www.glassdoor.com' + href : href;
+                            if (jobs.some(j => j.url === fullUrl)) continue;
+                            const companyEl = card.querySelector('.job-search-key-lmzjyg, [class*="company"]');
+                            const locEl = card.querySelector('.job-search-key-1m2z0jx, [class*="location"]');
+                            const timeEl = card.querySelector('.job-search-key-1erf0ry, [class*="date"]');
+                            jobs.push({{
+                                title,
+                                company: companyEl ? companyEl.textContent.trim() : 'Unknown',
+                                location: locEl ? locEl.textContent.trim() : '',
+                                url: fullUrl,
+                                date: timeEl ? timeEl.textContent.trim() : '',
+                            }});
+                            if (jobs.length >= {max_results}) break;
+                        }}
+                        return jobs;
+                    }}
+                """)
+                
+                for job in new_jobs:
+                    if job['url'] not in seen_urls:
+                        jobs_data.append(job)
+                        seen_urls.add(job['url'])
+                        if len(jobs_data) >= max_results:
+                            break
+                
+                try:
+                    next_button = await page.query_selector('button[aria-label="Next"], a[aria-label="Next"]')
+                    if next_button and len(jobs_data) < max_results:
+                        await next_button.click()
+                        await page.wait_for_selector(".react-job-listing, [data-test='job-listing']", timeout=10000)
+                        await asyncio.sleep(2)
+                        page_num += 1
+                    else:
+                        break
+                except Exception:
+                    break
+            
+            await page.close()
+        
+        out: List[Job] = []
+        for item in jobs_data:
+            dt = _parse_date(item.get("date", ""))
+            if dt and not _within_days(dt, days):
+                continue
+            if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                continue
+            job = Job(
+                id=f"glassdoor_{hash(item.get('url', ''))}",
+                title=item.get("title", ""),
+                company=item.get("company", "Unknown"),
+                location=item.get("location", "Remote"),
+                url=item.get("url", ""),
+                description="",
+                source="glassdoor",
+                date=dt,
+                tags=["headless"],
+            )
+            out.append(job)
+        return out
+    except Exception as e:
+        print(f"Error scraping glassdoor: {e}")
+        return []
+
+
 async def scrape_all(days: int = 3, query: str | None = None, enable_headless: bool = True) -> List[Job]:
     """
     Aggregate all HTTP/RSS-based scrapers in parallel.
@@ -831,12 +2022,15 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
         scrape_remoteok(days=days, query=query),
         scrape_remotive_api(days=days, query=query),
         scrape_remotive_rss(days=days, query=query),
+        scrape_remotive_data_feed(days=days, query=query),  # Remotive data category
+        scrape_remotive_ai_ml_feed(days=days, query=query),  # Remotive AI/ML category
         scrape_wellfound(days=days, query=query),
         scrape_indeed_rss(days=days, query=query),
         scrape_remote_co(days=days, query=query),
         scrape_jobspresso(days=days, query=query),
         scrape_himalayas(days=days, query=query),
         scrape_authentic_jobs(days=days, query=query),
+        scrape_stackoverflow_jobs(days=days, query=query),  # Stack Overflow Jobs RSS
     ]
     
     # Add Playwright headless scrapers if enabled
@@ -850,6 +2044,11 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
                         scrape_linkedin(days=days, query=query, browser=browser),
                         scrape_indeed_headless(days=days, query=query, browser=browser),
                         scrape_naukri(days=days, query=query, browser=browser),
+                        scrape_hirist(days=days, query=query, browser=browser),
+                        scrape_foundit(days=days, query=query, browser=browser),
+                        scrape_shine(days=days, query=query, browser=browser),
+                        scrape_monster(days=days, query=query, browser=browser),
+                        scrape_glassdoor(days=days, query=query, browser=browser),
                     ]
                     tasks.extend(headless_tasks)
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -874,6 +2073,32 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
             if job.url in seen:
                 continue
             seen.add(job.url)
+            
+            # Enhance job with metadata (YOE, visa, salary, currency)
+            from .scoring import enhance_job_with_metadata, calculate_match_score
+            metadata = enhance_job_with_metadata(job.description, job.location)
+            
+            # Update job fields if not already set
+            if job.yoe_min is None:
+                job.yoe_min = metadata.get("yoe_min")
+            if job.yoe_max is None:
+                job.yoe_max = metadata.get("yoe_max")
+            if job.visa_sponsorship is None:
+                job.visa_sponsorship = metadata.get("visa_sponsorship")
+            if job.salary_min is None:
+                job.salary_min = metadata.get("salary_min")
+            if job.salary_max is None:
+                job.salary_max = metadata.get("salary_max")
+            if job.currency is None:
+                job.currency = metadata.get("currency")
+            
+            # Calculate match_score (default target: 2 YOE)
+            if job.match_score is None:
+                job.match_score = calculate_match_score(
+                    job.title, job.description, job.location,
+                    job.yoe_min, job.yoe_max, target_yoe=2
+                )
+            
             jobs.append(job)
     
     print(f"Scraped {len(jobs)} jobs from {len(results) - error_count} sources ({error_count} errors)")

@@ -19,8 +19,28 @@ def load_jobs() -> List[Job]:
     try:
         raw = DATA_FILE.read_text(encoding="utf-8")
         data = json.loads(raw)
-        jobs = [Job(**item) for item in data.get("jobs", [])]
-    except Exception:
+        jobs = []
+        for item in data.get("jobs", []):
+            try:
+                # Backward compatibility: ensure all new fields have defaults
+                job_dict = {
+                    "match_score": None,
+                    "yoe_min": None,
+                    "yoe_max": None,
+                    "salary_min": None,
+                    "salary_max": None,
+                    "currency": None,
+                    "visa_sponsorship": None,
+                    "job_type": None,
+                    **item,  # Override with actual values if present
+                }
+                jobs.append(Job(**job_dict))
+            except Exception as e:
+                # Skip invalid jobs but log the error
+                print(f"Warning: Skipped invalid job: {e}")
+                continue
+    except Exception as e:
+        print(f"Error loading jobs: {e}")
         jobs = []
     return jobs
 

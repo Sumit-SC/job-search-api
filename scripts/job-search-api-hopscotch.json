@@ -1,0 +1,67 @@
+{
+  "name": "Job Search API - Railway",
+  "baseUrl": "https://job-search-api-production-5d5d.up.railway.app",
+  "requests": [
+    {
+      "name": "1. Health Check",
+      "method": "GET",
+      "url": "{{baseUrl}}/health",
+      "description": "Check if API is running"
+    },
+    {
+      "name": "2. Debug RSS Scrapers",
+      "method": "GET",
+      "url": "{{baseUrl}}/debug",
+      "description": "Test all 11 RSS/HTTP scrapers (fast, ~5-15s)"
+    },
+    {
+      "name": "3. Refresh Jobs (RSS-only)",
+      "method": "POST",
+      "url": "{{baseUrl}}/refresh?days=7&headless=0",
+      "description": "Scrape and save jobs from RSS sources (~10-30s)"
+    },
+    {
+      "name": "4. Get Jobs (basic)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&limit=5",
+      "description": "Get jobs from storage (must run refresh first)"
+    },
+    {
+      "name": "5. Get Jobs (sort by relevance)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&limit=5&sort=relevance",
+      "description": "Get jobs sorted by match_score (highest first)"
+    },
+    {
+      "name": "6. Get Jobs (filter YOE 1-3)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&limit=5&yoe_min=1&yoe_max=3",
+      "description": "Filter jobs by years of experience"
+    },
+    {
+      "name": "7. Get Jobs (pagination)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&page=1&per_page=10",
+      "description": "Get jobs with pagination (page 1, 10 per page)"
+    },
+    {
+      "name": "8. Get Jobs (filter by source)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&limit=10&source=weworkremotely",
+      "description": "Get jobs from specific source"
+    },
+    {
+      "name": "9. Get Jobs (search query)",
+      "method": "GET",
+      "url": "{{baseUrl}}/jobs?days=7&limit=10&q=data%20analyst",
+      "description": "Search jobs by query string"
+    },
+    {
+      "name": "10. Debug Headless (slow)",
+      "method": "GET",
+      "url": "{{baseUrl}}/debug/headless",
+      "description": "Test headless scrapers (LinkedIn, Indeed, Naukri) - ~60-90s",
+      "timeout": 120000
+    }
+  ]
+}

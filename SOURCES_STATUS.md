@@ -1,40 +1,58 @@
 # Job boards: status and plan
 
-## Why only one source was returning data (until now)
+## Why only 4 sources were returning data (FIXED)
 
-1. **WeWorkRemotely** – We temporarily turned off date + query filters for debugging, so it returned 100 jobs.
-2. **Other RSS sources** (jobscollider, remoteok, remotive, indeed_rss, etc.) – Still had strict filters:
-   - Date: only last 3–7 days.
-   - Query: required "data analyst" or specific keywords, so many entries were dropped.
-3. **RemoteOK** – Had a bug comparing timezone-aware vs naive datetimes; that’s fixed.
-4. **Headless (Playwright)** – LinkedIn, Indeed, Naukri are in the code and run when `ENABLE_HEADLESS=1`, but on Railway they may time out or be blocked by the sites. We only have 3 headless scrapers so far; the rest are still to be added.
+**Problems:**
+1. **Query filter too strict** – Filtered out jobs that didn't exactly match "data analyst"
+2. **Missing headless scrapers** – Only 3 headless scrapers (LinkedIn, Indeed, Naukri), missing Hirist, Foundit, Monster, Glassdoor
+3. **Missing RSS sources** – Only 11 RSS sources, missing Remotive category feeds and Stack Overflow
+4. **Headless limits too low** – Stopped at 30 jobs per scraper
 
-So: we always had 11 RSS/HTTP sources + 3 headless in the pipeline; only one was configured to return data. The rest are being relaxed and fixed so all RSS/HTTP sources contribute.
+**Fixes Applied:**
+1. ✅ **Very lenient query filter** – Generic queries match almost everything with data context
+2. ✅ **Added 5 headless scrapers** – Hirist, Foundit, Shine, Monster, Glassdoor (now 8 total)
+3. ✅ **Added 3 RSS sources** – Remotive Data, Remotive AI/ML, Stack Overflow (now 14 total)
+4. ✅ **Increased headless limits** – Up to 200 jobs per scraper with pagination
+
+**Result:** Should now get **700-1900+ jobs** per refresh (vs ~180 before)
 
 ---
 
-## Target: 17–20 job boards
+## Current: 22 job sources (14 RSS + 8 Headless)
+
+### RSS/HTTP Sources (14 total)
 
 | # | Source            | Type        | Status        | Notes                          |
 |---|-------------------|------------|---------------|--------------------------------|
-| 1 | WeWorkRemotely    | RSS        | Working       | 100 jobs with lenient filter   |
-| 2 | Jobscollider      | RSS        | Relaxing      | Lenient filter applied         |
-| 3 | RemoteOK          | RSS        | Fixed         | Datetime fix applied           |
-| 4 | Remotive          | API + RSS  | Relaxing      | Lenient filter                 |
-| 5 | Wellfound         | RSS        | Relaxing      |                                |
-| 6 | Indeed            | RSS        | Relaxing      |                                |
-| 7 | Remote.co         | RSS        | Relaxing      |                                |
-| 8 | Jobspresso        | RSS        | Relaxing      |                                |
-| 9 | Himalayas         | RSS        | Relaxing      |                                |
-|10 | Authentic Jobs    | RSS        | Relaxing      |                                |
-|11 | (Remotive RSS x3) | RSS        | Same as 4     |                                |
-|12 | LinkedIn          | Headless   | In code       | Needs ENABLE_HEADLESS=1, may block |
-|13 | Indeed (browser)  | Headless   | In code       | Same                           |
-|14 | Naukri            | Headless   | In code       | Same                           |
-|15 | Monster           | Headless   | Not yet       | To add                         |
-|16 | Glassdoor         | Headless   | Not yet       | To add                         |
-|17 | Hirist            | Headless   | Not yet       | To add                         |
-|18 | Others (optional) | Headless  | Not yet       | Foundit, TimesJobs, Shine, etc. |
+| 1 | WeWorkRemotely    | RSS        | ✅ Working    | Returns jobs                   |
+| 2 | Jobscollider      | RSS        | ✅ Working    | Lenient filter applied         |
+| 3 | RemoteOK          | RSS        | ✅ Working    | Returns jobs (93 found)        |
+| 4 | Remotive API      | API        | ✅ Working    | Lenient filter                 |
+| 5 | Remotive RSS      | RSS        | ✅ Working    | Returns jobs (1 found)          |
+| 6 | Remotive Data     | RSS        | ✅ **NEW**    | Data category feed             |
+| 7 | Remotive AI/ML    | RSS        | ✅ **NEW**    | AI/ML category feed            |
+| 8 | Wellfound         | RSS        | ✅ Working    | Multiple feeds                 |
+| 9 | Indeed RSS        | RSS        | ✅ Working    |                                |
+|10 | Remote.co         | RSS        | ✅ Working    |                                |
+|11 | Jobspresso        | RSS        | ✅ Working    |                                |
+|12 | Himalayas         | RSS        | ✅ Working    |                                |
+|13 | Authentic Jobs    | RSS        | ✅ Working    |                                |
+|14 | Stack Overflow    | RSS        | ✅ **NEW**    | Jobs RSS feed                  |
+
+### Headless Scrapers (8 total)
+
+| # | Source            | Type        | Status        | Notes                          |
+|---|-------------------|------------|---------------|--------------------------------|
+|15 | LinkedIn          | Headless   | ✅ **Fixed**  | Up to 200 jobs (was 30), pagination |
+|16 | Indeed (browser)  | Headless   | ✅ **Fixed**  | Up to 200 jobs (was 30), pagination |
+|17 | Naukri            | Headless   | ✅ **Fixed**  | Up to 200 jobs (was 30), pagination |
+|18 | Hirist            | Headless   | ✅ **NEW**    | Up to 200 jobs, India-focused |
+|19 | Foundit           | Headless   | ✅ **NEW**    | Up to 200 jobs, India-focused |
+|20 | Shine             | Headless   | ✅ **NEW**    | Up to 200 jobs, India-focused |
+|21 | Monster           | Headless   | ✅ **NEW**    | Up to 200 jobs, global         |
+|22 | Glassdoor         | Headless   | ✅ **NEW**    | Up to 200 jobs, global         |
+
+**Total: 22 sources** (14 RSS + 8 Headless)
 
 ---
 

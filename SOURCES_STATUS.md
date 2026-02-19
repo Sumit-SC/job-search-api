@@ -57,13 +57,13 @@ So: we always had 11 RSS/HTTP sources + 3 headless in the pipeline; only one was
    - Manual: hit `/debug`, `/refresh`, `/jobs` and check source counts.  
    - Optional: add a small script or GitHub Action that checks “at least N sources return &gt; 0 jobs”.
 
-5. **UI integration**  
-   - Point **analytics-lab** (e.g. `jobs.js`) and **playground-serveless** job UI to the Railway API base URL:  
-     `https://job-search-api-production-5d5d.up.railway.app`  
-   - Use:  
-     - `GET /jobs?days=7&limit=200` for listing.  
-     - `POST /refresh?...` for “Refresh jobs” (optional, or run on a schedule).  
-   - Keep existing filters (by source, date, query) in the UI; they’ll work on the combined list from all sources.
+5. **UI integration (current: Vercel + frontend only)**  
+   - **analytics-lab** and **playground-serverless** use the **Vercel** APIs only (no Railway for now):  
+     - `GET /api/jobs-snapshot?q=...&days=...&limit=...` for listing (primary).  
+     - `GET /api/jobs-cached?q=...` as fallback.  
+     - `GET /api/jobs-refresh?q=...&days=...&location=...` for “Refresh jobs”.  
+   - Frontend is configured via `window.JOB_PROXY_URL = 'https://playground-serveless.vercel.app'`.  
+   - *(Optional later: point to Railway `GET /jobs` and `POST /refresh` if you deploy job-search-api there.)*
 
 ---
 
@@ -72,6 +72,6 @@ So: we always had 11 RSS/HTTP sources + 3 headless in the pipeline; only one was
 - **RSS/HTTP (11 sources)**: Done once lenient filtering is applied and deployed; then test.
 - **Headless (3 live on Railway)**: Done after we verify they run and don’t always time out.
 - **17–20 boards**: Done after we add the remaining headless scrapers and run a full test.
-- **UI**: Done after we wire both UIs to the Railway API and verify listing + refresh.
+- **UI**: Done for current setup — both UIs use Vercel APIs (jobs-snapshot, jobs-cached, jobs-refresh). Railway is optional for later.
 
-Next code steps: apply lenient filtering everywhere in the scraper, then re-test and wire the UI to Railway.
+Next code steps: apply lenient filtering in the scraper (job-search-api). UI is already on Vercel + frontend.

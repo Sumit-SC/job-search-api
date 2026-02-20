@@ -54,6 +54,33 @@ header h1 {
     font-size: 1.1rem;
 }
 
+.subtitle-brand {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    margin-top: 2px;
+}
+
+.page-footer {
+    margin-top: 48px;
+    padding: 20px 16px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+.page-footer .footer-by {
+    margin-bottom: 6px;
+}
+
+.page-footer .footer-ack {
+    max-width: 560px;
+    margin: 0 auto;
+    line-height: 1.5;
+}
+
 .top-nav {
     margin-top: 16px;
     display: inline-flex;

@@ -1,4 +1,6 @@
-const RSSJOBS_API_BASE_URL = 'http://localhost:8000';
+const RSSJOBS_API_BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin)
+    ? window.location.origin
+    : 'http://localhost:8000';
 
 const rssFetchBtn = document.getElementById('rss-fetch-btn');
 const rssStatus = document.getElementById('rss-status');

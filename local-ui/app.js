@@ -1,5 +1,7 @@
-// Configuration
-const API_BASE_URL = 'http://localhost:8000';
+// Configuration: use same origin when served from Railway (or any host), else localhost
+const API_BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin)
+    ? window.location.origin
+    : 'http://localhost:8000';
 
 // In-memory cache of jobs loaded from /jobs or /refresh
 let allJobs = [];

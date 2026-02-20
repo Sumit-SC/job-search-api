@@ -1,4 +1,6 @@
-const JOBSPY_API_BASE_URL = 'http://localhost:8000';
+const JOBSPY_API_BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin)
+    ? window.location.origin
+    : 'http://localhost:8000';
 
 const jobspyFetchBtn = document.getElementById('jobspy-fetch-btn');
 const jobspyStatus = document.getElementById('jobspy-status');

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -12,6 +13,7 @@ import feedparser
 from dateutil import parser as dateparser
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
 from .scraper import scrape_all
@@ -61,6 +63,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve local-ui static files on Railway (and locally) at /ui
+_LOCAL_UI_DIR = Path(__file__).resolve().parent.parent / "local-ui"
+if _LOCAL_UI_DIR.exists():
+    app.mount("/ui", StaticFiles(directory=str(_LOCAL_UI_DIR), html=True), name="ui")
+
+
+@app.get("/")
+async def root() -> Response:
+    """Redirect to the embedded UI so the Railway page loads the local-ui HTML."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ui/", status_code=302)
 
 
 @app.get("/health")

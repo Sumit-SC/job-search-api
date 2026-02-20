@@ -100,14 +100,21 @@ Once deployed, test the API. From the repo (local or CI):
 **PowerShell (Windows):**
 ```powershell
 cd job-search-api/scripts
-.\test_endpoints.ps1 https://your-app.up.railway.app
+.\test_railway.ps1 https://your-app.up.railway.app
 ```
 
 **Bash (Linux/macOS):**
 ```bash
 cd job-search-api/scripts
-chmod +x test_endpoints.sh
-./test_endpoints.sh https://your-app.up.railway.app
+chmod +x test_railway.sh
+./test_railway.sh https://your-app.up.railway.app
 ```
 
-**Manual curls:** Health `GET /health`; RSS scrapers `GET /debug`; headless scrapers `GET /debug/headless`; refresh `POST /refresh?days=3&headless=0` (RSS-only) or `POST /refresh?days=3`; list `GET /jobs?limit=50`.
+**Manual curls:** 
+- Health: `GET /health`
+- System resources: `GET /system`
+- RSS scrapers: `GET /debug`
+- Headless scrapers: `GET /debug/headless` (slow, ~2-5 min)
+- Refresh (RSS only, fast): `POST /refresh?days=3&headless=0`
+- Refresh (with headless): `POST /refresh?days=3`
+- List jobs: `GET /jobs?limit=50`

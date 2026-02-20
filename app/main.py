@@ -1,14 +1,27 @@
 from __future__ import annotations
 
+import logging
+import sys
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import FastAPI, Query
+import html
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
 from .scraper import scrape_all
 from .storage import load_jobs, save_jobs
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Import scoring with fallback
 try:
@@ -309,6 +322,85 @@ async def get_jobs_grouped_by_currency(
         return GroupedByCurrencyResponse(ok=True, currencies=currencies)
     except Exception as e:
         return GroupedByCurrencyResponse(ok=False, currencies={}, error=str(e)[:500])
+
+
+@app.get("/jobs/rss", response_class=Response)
+async def get_jobs_rss(
+    request: Request,
+    q: Optional[str] = Query(None, description="Free text query, e.g. 'data analyst'"),
+    days: int = Query(3, ge=1, le=30, description="Max age of jobs in days"),
+    limit: int = Query(100, ge=1, le=400, description="Max items in RSS feed"),
+    source: Optional[str] = Query(None, description="Filter by source id"),
+) -> Response:
+    """
+    Lightweight RSS feed over the stored jobs.
+    Intended for quick UI experiments and RSS-style consumption.
+    """
+    all_jobs: List[Job] = load_jobs()
+    if not all_jobs:
+        rss_empty = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Jobs RSS</title><link>{link}</link><description>No jobs available</description></channel></rss>""".format(
+            link=html.escape(str(request.url))
+        )
+        return Response(content=rss_empty, media_type="application/rss+xml")
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    q_lower = q.lower() if q else None
+    filtered: List[Job] = []
+
+    for job in all_jobs:
+        if job.date and job.date < cutoff:
+            continue
+        if source and job.source != source:
+            continue
+        if q_lower:
+            text = f"{job.title} {job.company} {job.location} {job.description}".lower()
+            if q_lower not in text:
+                continue
+        filtered.append(job)
+
+    # Sort newest first and apply limit
+    filtered.sort(key=lambda j: (j.date or datetime.min), reverse=True)
+    jobs = filtered[:limit]
+
+    base_link = str(request.base_url).rstrip("/")
+    channel_link = f"{base_link}/jobs/rss"
+
+    items_xml = []
+    for job in jobs:
+        title = html.escape(job.title or "Untitled job")
+        link = html.escape(str(job.url))
+        description_parts = [
+            job.company or "",
+            job.location or "",
+        ]
+        if job.description:
+            description_parts.append(job.description[:400])
+        description = html.escape(" | ".join(p for p in description_parts if p))
+        pub_date = (
+            job.date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+            if job.date
+            else datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        )
+        source_tag = html.escape(job.source or "")
+        items_xml.append(
+            f"<item><title>{title}</title><link>{link}</link>"
+            f"<description>{description}</description>"
+            f"<pubDate>{pub_date}</pubDate>"
+            f"<category>{source_tag}</category>"
+            f"</item>"
+        )
+
+    rss_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        f"<title>Jobs RSS</title>"
+        f"<link>{html.escape(channel_link)}</link>"
+        "<description>Jobs feed from job-search-api</description>"
+        + "".join(items_xml)
+        + "</channel></rss>"
+    )
+
+    return Response(content=rss_xml, media_type="application/rss+xml")
 
 
 @app.post("/refresh", response_model=JobsResponse)

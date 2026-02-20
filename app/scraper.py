@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -16,18 +17,41 @@ except ImportError:
 
 from .models import Job
 
+logger = logging.getLogger(__name__)
 
-USER_AGENT = "JobsScraper/1.0 (+https://github.com/Sumit-SC)"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
-async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0) -> str:
-    try:
-        resp = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
-        if resp.status_code != 200:
+async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0, retries: int = 2) -> str:
+    """Fetch text with retries and better error handling."""
+    for attempt in range(retries + 1):
+        try:
+            resp = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout, follow_redirects=True)
+            if resp.status_code == 200:
+                return resp.text
+            elif resp.status_code in [429, 503, 504]:  # Rate limit or service unavailable
+                if attempt < retries:
+                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s
+                    logger.warning(f"Rate limited on {url}, retrying in {wait_time}s (attempt {attempt + 1}/{retries + 1})")
+                    await asyncio.sleep(wait_time)
+                    continue
+            logger.warning(f"Failed to fetch {url}: HTTP {resp.status_code}")
             return ""
-        return resp.text
-    except Exception:
-        return ""
+        except httpx.TimeoutException:
+            if attempt < retries:
+                logger.warning(f"Timeout fetching {url}, retrying (attempt {attempt + 1}/{retries + 1})")
+                await asyncio.sleep(1)
+                continue
+            logger.error(f"Timeout fetching {url} after {retries + 1} attempts")
+            return ""
+        except Exception as e:
+            if attempt < retries:
+                logger.warning(f"Error fetching {url}: {e}, retrying (attempt {attempt + 1}/{retries + 1})")
+                await asyncio.sleep(1)
+                continue
+            logger.error(f"Error fetching {url}: {e}")
+            return ""
+    return ""
 
 
 def _parse_date(value: str) -> datetime | None:
@@ -104,40 +128,50 @@ async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List
     """
     url = "https://weworkremotely.com/remote-jobs.rss"
     try:
-        async with httpx.AsyncClient() as client:
-            xml = await fetch_text(client, url)
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            xml = await fetch_text(client, url, timeout=20.0, retries=2)
         if not xml:
+            logger.warning(f"Empty response from {url}")
             return []
 
         feed = feedparser.parse(xml)
+        if feed.bozo and feed.bozo_exception:
+            logger.warning(f"Feed parse error for {url}: {feed.bozo_exception}")
+        
         out: List[Job] = []
         for entry in feed.entries:
-            title = getattr(entry, "title", "") or ""
-            link = getattr(entry, "link", "") or ""
-            summary = getattr(entry, "summary", "") or ""
-            published = getattr(entry, "published", "") or ""
-            dt = _parse_date(published)
-            if not _within_days(dt, days):
+            try:
+                title = getattr(entry, "title", "") or ""
+                link = getattr(entry, "link", "") or ""
+                summary = getattr(entry, "summary", "") or ""
+                published = getattr(entry, "published", "") or ""
+                dt = _parse_date(published)
+                if not _within_days(dt, days):
+                    continue
+                if not _matches_query(title, summary, query):
+                    continue
+                if not link:
+                    continue
+                job = Job(
+                    id=f"weworkremotely_{hash(link)}",
+                    title=title,
+                    company="Unknown",
+                    location="Remote",
+                    url=link,
+                    description=summary,
+                    source="weworkremotely",
+                    date=dt,
+                    tags=["rss"],
+                )
+                out.append(job)
+            except Exception as e:
+                logger.warning(f"Error processing entry from weworkremotely: {e}")
                 continue
-            if not _matches_query(title, summary, query):
-                continue
-            if not link:
-                continue
-            job = Job(
-                id=f"weworkremotely_{hash(link)}",
-                title=title,
-                company="Unknown",
-                location="Remote",
-                url=link,
-                description=summary,
-                source="weworkremotely",
-                date=dt,
-                tags=["rss"],
-            )
-            out.append(job)
+        
+        logger.info(f"Scraped {len(out)} jobs from weworkremotely")
         return out
     except Exception as e:
-        print(f"Error scraping weworkremotely: {e}")
+        logger.error(f"Error scraping weworkremotely: {e}", exc_info=True)
         return []
 
 
@@ -670,6 +704,22 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
 # Playwright-based headless scrapers (for portals without RSS/API)
 # ============================================================================
 
+async def _retry_headless_operation(operation, max_retries: int = 2, delay: float = 2.0):
+    """Helper to retry headless browser operations with exponential backoff."""
+    for attempt in range(max_retries + 1):
+        try:
+            return await operation()
+        except Exception as e:
+            if attempt < max_retries:
+                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                logger.warning(f"Headless operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}, retrying in {wait_time}s")
+                await asyncio.sleep(wait_time)
+                continue
+            logger.error(f"Headless operation failed after {max_retries + 1} attempts: {e}")
+            raise
+    return None
+
+
 async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Optional[Browser] = None, max_results: int = 200) -> List[Job]:
     """
     Scrape LinkedIn Jobs using Playwright.
@@ -687,10 +737,34 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
         should_close_browser = browser is None
         if browser is None:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                )
                 page = await browser.new_page()
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_selector(".jobs-search__results-list, [data-test-id='job-card']", timeout=15000)
+                await page.set_extra_http_headers({"User-Agent": USER_AGENT})
+                
+                # Navigate with retry
+                async def navigate():
+                    await page.goto(url, wait_until="networkidle", timeout=45000)
+                    # Try multiple selectors for LinkedIn's dynamic structure
+                    selectors = [
+                        ".jobs-search__results-list",
+                        "[data-test-id='job-card']",
+                        "ul.jobs-search__results-list li",
+                        ".scaffold-layout__list-container li"
+                    ]
+                    for selector in selectors:
+                        try:
+                            await page.wait_for_selector(selector, timeout=10000)
+                            logger.info(f"LinkedIn: Found selector {selector}")
+                            break
+                        except:
+                            continue
+                    else:
+                        logger.warning("LinkedIn: No known selectors found, proceeding anyway")
+                
+                await _retry_headless_operation(navigate, max_retries=1)
                 
                 # Scroll and paginate to get more results
                 jobs_data = []
@@ -750,8 +824,24 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
                 await browser.close()
         else:
             page = await browser.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_selector(".jobs-search__results-list, [data-test-id='job-card']", timeout=15000)
+            await page.set_extra_http_headers({"User-Agent": USER_AGENT})
+            
+            async def navigate():
+                await page.goto(url, wait_until="networkidle", timeout=45000)
+                selectors = [
+                    ".jobs-search__results-list",
+                    "[data-test-id='job-card']",
+                    "ul.jobs-search__results-list li",
+                    ".scaffold-layout__list-container li"
+                ]
+                for selector in selectors:
+                    try:
+                        await page.wait_for_selector(selector, timeout=10000)
+                        break
+                    except:
+                        continue
+            
+            await _retry_headless_operation(navigate, max_retries=1)
             
             # Scroll and paginate
             jobs_data = []
@@ -823,8 +913,10 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
                 tags=["headless"],
             )
             out.append(job)
+        logger.info(f"Scraped {len(out)} jobs from linkedin")
         return out
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error scraping linkedin: {e}", exc_info=True)
         return []
 
 
@@ -2055,7 +2147,7 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
                 finally:
                     await browser.close()
         except Exception as e:
-            print(f"Headless scraping failed: {e}")
+            logger.error(f"Headless scraping failed: {e}", exc_info=True)
             # If headless fails, fall back to HTTP-only
             results = await asyncio.gather(*tasks[:len(tasks)], return_exceptions=True)
     else:
@@ -2064,42 +2156,55 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
     jobs: List[Job] = []
     seen = set()
     error_count = 0
+    source_counts = {}
+    
     for i, res in enumerate(results):
         if isinstance(res, Exception):
             error_count += 1
-            print(f"Scraper {i} failed: {res}")
+            logger.warning(f"Scraper {i} failed: {res}")
             continue
+        if not isinstance(res, list):
+            logger.warning(f"Scraper {i} returned non-list: {type(res)}")
+            continue
+        
+        source_name = res[0].source if res and len(res) > 0 else f"scraper_{i}"
+        source_counts[source_name] = len(res)
+        
         for job in res:
             if job.url in seen:
                 continue
             seen.add(job.url)
             
             # Enhance job with metadata (YOE, visa, salary, currency)
-            from .scoring import enhance_job_with_metadata, calculate_match_score
-            metadata = enhance_job_with_metadata(job.description, job.location)
-            
-            # Update job fields if not already set
-            if job.yoe_min is None:
-                job.yoe_min = metadata.get("yoe_min")
-            if job.yoe_max is None:
-                job.yoe_max = metadata.get("yoe_max")
-            if job.visa_sponsorship is None:
-                job.visa_sponsorship = metadata.get("visa_sponsorship")
-            if job.salary_min is None:
-                job.salary_min = metadata.get("salary_min")
-            if job.salary_max is None:
-                job.salary_max = metadata.get("salary_max")
-            if job.currency is None:
-                job.currency = metadata.get("currency")
-            
-            # Calculate match_score (default target: 2 YOE)
-            if job.match_score is None:
-                job.match_score = calculate_match_score(
-                    job.title, job.description, job.location,
-                    job.yoe_min, job.yoe_max, target_yoe=2
-                )
+            try:
+                from .scoring import enhance_job_with_metadata, calculate_match_score
+                metadata = enhance_job_with_metadata(job.description or "", job.location or "")
+                
+                # Update job fields if not already set
+                if job.yoe_min is None:
+                    job.yoe_min = metadata.get("yoe_min")
+                if job.yoe_max is None:
+                    job.yoe_max = metadata.get("yoe_max")
+                if job.visa_sponsorship is None:
+                    job.visa_sponsorship = metadata.get("visa_sponsorship")
+                if job.salary_min is None:
+                    job.salary_min = metadata.get("salary_min")
+                if job.salary_max is None:
+                    job.salary_max = metadata.get("salary_max")
+                if job.currency is None:
+                    job.currency = metadata.get("currency")
+                
+                # Calculate match_score (default target: 2 YOE)
+                if job.match_score is None:
+                    job.match_score = calculate_match_score(
+                        job.title or "", job.description or "", job.location or "",
+                        job.yoe_min, job.yoe_max, target_yoe=2
+                    )
+            except Exception as e:
+                logger.warning(f"Error enhancing job metadata: {e}")
+                # Continue without metadata enhancement
             
             jobs.append(job)
     
-    print(f"Scraped {len(jobs)} jobs from {len(results) - error_count} sources ({error_count} errors)")
+    logger.info(f"Scraped {len(jobs)} unique jobs from {len(results) - error_count} sources ({error_count} errors). Source breakdown: {source_counts}")
     return jobs

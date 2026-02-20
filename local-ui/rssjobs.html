@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSSJobs.app Viewer - Local UI</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📰 RSSJobs.app Viewer</h1>
+            <p class="subtitle">Fetch jobs directly from rssjobs.app</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">Core API</a>
+                <a href="rssjobs.html" class="nav-link nav-link-active">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link">JobSpy</a>
+            </nav>
+        </header>
+
+        <div class="controls-section">
+            <div class="card">
+                <h2>Fetch from rssjobs.app</h2>
+                <p class="description">
+                    Uses backend proxy endpoint <code>GET /rssjobs</code> to fetch RSS feeds from rssjobs.app
+                    (avoids CORS issues). The backend fetches <code>https://rssjobs.app/feeds?keywords=...&amp;location=...</code>
+                    and parses it into job listings.
+                </p>
+                <div class="search-controls">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="rss-role">Role / Keywords:</label>
+                            <input type="text" id="rss-role" placeholder="e.g., data analyst" value="data analyst">
+                        </div>
+                        <div class="input-group">
+                            <label for="rss-location">Location:</label>
+                            <input type="text" id="rss-location" placeholder="e.g., remote, Pune, India" value="remote">
+                        </div>
+                        <div class="input-group">
+                            <label for="rss-max">Max items to show:</label>
+                            <input type="number" id="rss-max" min="1" max="200" value="100">
+                        </div>
+                    </div>
+                    <button id="rss-fetch-btn" class="btn btn-primary">
+                        <span class="btn-text">📰 Fetch from rssjobs.app</span>
+                        <span class="btn-loader" style="display: none;">⏳ Fetching...</span>
+                    </button>
+                    <div id="rss-status" class="status-message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="results-header">
+                <h2 id="rss-results-title">RSSJobs Results</h2>
+                <div id="rss-results-count" class="results-count"></div>
+            </div>
+            <div id="rss-jobs-container" class="jobs-container">
+                <div class="empty-state">
+                    <p>👆 Enter Role + Location and click “Fetch from rssjobs.app”.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="rssjobs.js"></script>
+</body>
+</html>
+

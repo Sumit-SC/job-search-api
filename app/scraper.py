@@ -299,12 +299,13 @@ async def scrape_remotive_api(days: int = 3, query: str | None = None) -> List[J
 
 async def scrape_remotive_rss(days: int = 3, query: str | None = None) -> List[Job]:
     """
-    Scrape Remotive RSS feed.
+    Scrape Remotive RSS feed - expanded with more category feeds.
     """
     urls = [
         "https://remotive.com/feed",
         "https://remotive.com/remote-jobs/feed/data",
         "https://remotive.com/remote-jobs/feed/ai-ml",
+        "https://remotive.com/remote-jobs/feed/analytics",  # Added analytics category
     ]
     out: List[Job] = []
     async with httpx.AsyncClient() as client:
@@ -342,12 +343,13 @@ async def scrape_remotive_rss(days: int = 3, query: str | None = None) -> List[J
 
 async def scrape_wellfound(days: int = 3, query: str | None = None) -> List[Job]:
     """
-    Scrape Wellfound (formerly AngelList) RSS feeds.
+    Scrape Wellfound (formerly AngelList) RSS feeds - expanded with more keyword variations.
     """
     urls = [
         "https://wellfound.com/jobs.rss?keywords=data-science&remote=true",
         "https://wellfound.com/jobs.rss?keywords=data-analyst&remote=true",
         "https://wellfound.com/jobs.rss?keywords=business-intelligence&remote=true",
+        "https://wellfound.com/jobs.rss?keywords=analytics-engineer&remote=true",  # Added analytics engineer
     ]
     out: List[Job] = []
     async with httpx.AsyncClient() as client:
@@ -385,12 +387,14 @@ async def scrape_wellfound(days: int = 3, query: str | None = None) -> List[Job]
 
 async def scrape_indeed_rss(days: int = 3, query: str | None = None) -> List[Job]:
     """
-    Scrape Indeed RSS feed.
+    Scrape Indeed RSS feed - expanded with more query variations.
     """
     search_query = query or "data analyst"
     urls = [
         f"https://rss.indeed.com/rss?q={search_query.replace(' ', '+')}&l=remote&radius=0",
         f"https://rss.indeed.com/rss?q={search_query.replace(' ', '+')}+data+scientist&l=remote&radius=0",
+        f"https://rss.indeed.com/rss?q=business+analyst&l=remote&radius=0",  # Added business analyst
+        f"https://rss.indeed.com/rss?q=analytics+engineer&l=remote&radius=0",  # Added analytics engineer
     ]
     out: List[Job] = []
     async with httpx.AsyncClient() as client:
@@ -618,17 +622,22 @@ async def scrape_remotive_ai_ml_feed(days: int = 3, query: str | None = None) ->
 
 async def scrape_stackoverflow_jobs(days: int = 3, query: str | None = None) -> List[Job]:
     """
-    Scrape Stack Overflow Jobs RSS feed.
+    Scrape Stack Overflow Jobs RSS feed - expanded with more query variations.
     """
     search_query = query or "data analyst"
-    url = f"https://stackoverflow.com/jobs/feed?q={search_query.replace(' ', '+')}&l=remote&d=20&u=Km"
-    async with httpx.AsyncClient() as client:
-        xml = await fetch_text(client, url)
-    if not xml:
-        return []
-    feed = feedparser.parse(xml)
+    urls = [
+        f"https://stackoverflow.com/jobs/feed?q={search_query.replace(' ', '+')}&l=remote&d=20&u=Km",
+        f"https://stackoverflow.com/jobs/feed?q=data+analyst&l=remote&d=20&u=Km",  # Explicit data analyst
+    ]
     out: List[Job] = []
-    for entry in feed.entries:
+    seen_urls = set()  # Deduplicate across multiple URLs
+    async with httpx.AsyncClient() as client:
+        for url in urls:
+            xml = await fetch_text(client, url)
+            if not xml:
+                continue
+            feed = feedparser.parse(xml)
+            for entry in feed.entries:
         title = getattr(entry, "title", "") or ""
         link = getattr(entry, "link", "") or ""
         summary = getattr(entry, "summary", "") or ""
@@ -642,23 +651,26 @@ async def scrape_stackoverflow_jobs(days: int = 3, query: str | None = None) -> 
             continue
         # Extract company from title (Stack Overflow format: "Job Title - Company Name")
         company = "Unknown"
-        if " - " in title:
-            parts = title.split(" - ", 1)
-            if len(parts) == 2:
-                title = parts[0].strip()
-                company = parts[1].strip()
-        job = Job(
-            id=f"stackoverflow_{hash(link)}",
-            title=title,
-            company=company,
-            location="Remote",
-            url=link,
-            description=summary,
-            source="stackoverflow",
-            date=dt,
-            tags=["rss"],
-        )
-        out.append(job)
+                if " - " in title:
+                    parts = title.split(" - ", 1)
+                    if len(parts) == 2:
+                        title = parts[0].strip()
+                        company = parts[1].strip()
+                if link in seen_urls:
+                    continue  # Skip duplicates
+                seen_urls.add(link)
+                job = Job(
+                    id=f"stackoverflow_{hash(link)}",
+                    title=title,
+                    company=company,
+                    location="Remote",
+                    url=link,
+                    description=summary,
+                    source="stackoverflow",
+                    date=dt,
+                    tags=["rss"],
+                )
+                out.append(job)
     return out
 
 
@@ -2094,7 +2106,12 @@ async def scrape_glassdoor(days: int = 3, query: str | None = None, browser: Opt
         return []
 
 
-async def scrape_all(days: int = 3, query: str | None = None, enable_headless: bool = True) -> List[Job]:
+async def scrape_all(
+    days: int = 3,
+    query: str | None = None,
+    enable_headless: bool = True,
+    mode: str = "all",
+) -> List[Job]:
     """
     Aggregate all HTTP/RSS-based scrapers in parallel.
     Optionally includes Playwright headless scrapers (slower but more comprehensive).
@@ -2105,28 +2122,41 @@ async def scrape_all(days: int = 3, query: str | None = None, enable_headless: b
         enable_headless: If True and Playwright is available, run headless browser scrapers
     """
     import os
+    from .jobspy_integration import scrape_jobspy_sources
+
     enable_headless = enable_headless and PLAYWRIGHT_AVAILABLE and os.getenv("ENABLE_HEADLESS", "1") == "1"
+    use_jobspy = os.getenv("USE_JOBSPY", "0") == "1"
+    mode = (mode or "all").lower()
+
+    tasks = []
+
+    # RSS/HTTP sources (fast, reliable)
+    if mode in ("rss", "all"):
+        tasks.extend(
+            [
+                scrape_weworkremotely(days=days, query=query),
+                scrape_jobscollider(days=days, query=query),
+                scrape_remoteok(days=days, query=query),
+                scrape_remotive_api(days=days, query=query),
+                scrape_remotive_rss(days=days, query=query),
+                scrape_remotive_data_feed(days=days, query=query),  # Remotive data category
+                scrape_remotive_ai_ml_feed(days=days, query=query),  # Remotive AI/ML category
+                scrape_wellfound(days=days, query=query),
+                scrape_indeed_rss(days=days, query=query),
+                scrape_remote_co(days=days, query=query),
+                scrape_jobspresso(days=days, query=query),
+                scrape_himalayas(days=days, query=query),
+                scrape_authentic_jobs(days=days, query=query),
+                scrape_stackoverflow_jobs(days=days, query=query),  # Stack Overflow Jobs RSS
+            ]
+        )
+
+    # Optional: python-jobspy backend for big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
+    if use_jobspy and mode in ("headless", "all"):
+        tasks.append(scrape_jobspy_sources(days=days, query=query))
     
-    tasks = [
-        # RSS/HTTP sources (fast, reliable)
-        scrape_weworkremotely(days=days, query=query),
-        scrape_jobscollider(days=days, query=query),
-        scrape_remoteok(days=days, query=query),
-        scrape_remotive_api(days=days, query=query),
-        scrape_remotive_rss(days=days, query=query),
-        scrape_remotive_data_feed(days=days, query=query),  # Remotive data category
-        scrape_remotive_ai_ml_feed(days=days, query=query),  # Remotive AI/ML category
-        scrape_wellfound(days=days, query=query),
-        scrape_indeed_rss(days=days, query=query),
-        scrape_remote_co(days=days, query=query),
-        scrape_jobspresso(days=days, query=query),
-        scrape_himalayas(days=days, query=query),
-        scrape_authentic_jobs(days=days, query=query),
-        scrape_stackoverflow_jobs(days=days, query=query),  # Stack Overflow Jobs RSS
-    ]
-    
-    # Add Playwright headless scrapers if enabled
-    if enable_headless:
+    # Add Playwright headless scrapers if enabled and requested
+    if enable_headless and mode in ("headless", "all"):
         # Use a shared browser instance for efficiency
         try:
             async with async_playwright() as p:

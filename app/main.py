@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import html
+import httpx
+import feedparser
+from dateutil import parser as dateparser
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -427,10 +431,15 @@ async def refresh_jobs(
     q: Optional[str] = Query("data analyst", description="Default search query"),
     days: int = Query(3, ge=1, le=30),
     headless: Optional[bool] = Query(None, description="Include headless scrapers (default: from ENABLE_HEADLESS env). Use headless=0 for quick RSS-only refresh."),
+    mode: Optional[str] = Query(None, description="Source mode: 'rss', 'headless', or 'all' (default)."),
     include_stats: bool = Query(False, description="Include system resource stats in response"),
 ) -> JobsResponse:
+    normalized_mode = (mode or "all").lower()
+    if normalized_mode not in ("rss", "headless", "all"):
+        normalized_mode = "all"
+
     enable_headless = headless if headless is not None else True
-    jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless)
+    jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode)
     save_jobs(jobs)
     
     response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
@@ -465,6 +474,130 @@ async def refresh_jobs(
             pass  # Stats optional
     
     return response
+
+
+@app.get("/jobspy", response_model=JobsResponse)
+async def jobspy_jobs(
+    q: Optional[str] = Query(None, description="Search term for jobspy-backed boards"),
+    location: Optional[str] = Query(None, description="Location string passed to jobspy (city, country, etc.)"),
+    days: int = Query(3, ge=1, le=30, description="Max age of jobs in days (converted to hours_old for jobspy)"),
+    limit: int = Query(100, ge=1, le=400, description="Max results per response"),
+) -> JobsResponse:
+    """
+    Fetch jobs directly from python-jobspy (LinkedIn, Indeed, Glassdoor, ZipRecruiter) without touching local storage.
+    Useful for comparing jobspy-only results vs our own scrapers.
+    """
+    try:
+        from .jobspy_integration import scrape_jobspy_sources
+    except ImportError:
+        return JobsResponse(ok=False, count=0, jobs=[], error="python-jobspy is not installed")
+
+    jobs = await scrape_jobspy_sources(days=days, query=q, location=location, results_wanted=limit)
+    return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+
+
+@app.get("/rssjobs", response_model=JobsResponse)
+async def rssjobs_proxy(
+    keywords: str = Query(..., description="Job keywords/role (e.g., 'data analyst')"),
+    location: str = Query("remote", description="Location (e.g., 'remote', 'pune', 'india')"),
+    limit: int = Query(100, ge=1, le=400, description="Max results per response"),
+) -> JobsResponse:
+    """
+    Proxy endpoint for rssjobs.app feeds. Fetches RSS feed server-side (no CORS issues)
+    and parses it into our Job model format.
+    """
+    try:
+        feed_url = f"https://rssjobs.app/feeds?keywords={keywords}&location={location}"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(feed_url)
+            response.raise_for_status()
+            xml_content = response.text
+        
+        if not xml_content:
+            return JobsResponse(ok=False, count=0, jobs=[], error="Empty response from rssjobs.app")
+        
+        # Parse RSS feed
+        feed = feedparser.parse(xml_content)
+        
+        if feed.bozo and feed.bozo_exception:
+            logger.warning(f"RSS parse error for rssjobs.app: {feed.bozo_exception}")
+            return JobsResponse(ok=False, count=0, jobs=[], error=f"RSS parse error: {feed.bozo_exception}")
+        
+        jobs: List[Job] = []
+        cutoff_date = datetime.utcnow() - timedelta(days=30)  # Max 30 days old
+        
+        for entry in feed.entries[:limit]:
+            try:
+                title = getattr(entry, "title", "") or ""
+                link = getattr(entry, "link", "") or ""
+                description = getattr(entry, "description", "") or getattr(entry, "summary", "") or ""
+                published = getattr(entry, "published", "") or getattr(entry, "published_parsed", None)
+                
+                if not title or not link:
+                    continue
+                
+                # Parse date using feedparser's parsed date (more reliable)
+                dt: Optional[datetime] = None
+                published_parsed = getattr(entry, "published_parsed", None)
+                if published_parsed and isinstance(published_parsed, time.struct_time):
+                    try:
+                        # Convert struct_time to datetime
+                        dt = datetime(*published_parsed[:6], tzinfo=timezone.utc)
+                    except Exception:
+                        dt = None
+                elif published:
+                    # Fallback: try parsing the string
+                    try:
+                        dt = dateparser.parse(published)
+                        if dt and dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        dt = None
+                
+                # Filter by date if available
+                if dt:
+                    dt_normalized = normalize_datetime(dt)
+                    if dt_normalized and dt_normalized < cutoff_date:
+                        continue
+                
+                # Extract company/location from title or description if possible
+                # rssjobs.app format: "Title: Company Name" or similar
+                company = "Unknown"
+                location_str = location.title()
+                
+                # Try to extract company from title (common format: "Job Title at Company")
+                if " at " in title:
+                    parts = title.split(" at ", 1)
+                    if len(parts) == 2:
+                        title = parts[0].strip()
+                        company = parts[1].strip()
+                
+                job = Job(
+                    id=f"rssjobs_{hash(link)}",
+                    title=title,
+                    company=company,
+                    location=location_str,
+                    url=link,
+                    description=description[:2000] if description else "",  # Limit description length
+                    source="rssjobs.app",
+                    date=dt,
+                    tags=["rssjobs"],
+                )
+                jobs.append(job)
+            except Exception as e:
+                logger.warning(f"Error processing rssjobs.app entry: {e}")
+                continue
+        
+        return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+    
+    except httpx.TimeoutException:
+        return JobsResponse(ok=False, count=0, jobs=[], error="Timeout fetching rssjobs.app feed")
+    except httpx.HTTPStatusError as e:
+        return JobsResponse(ok=False, count=0, jobs=[], error=f"HTTP error from rssjobs.app: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Error fetching rssjobs.app feed: {e}", exc_info=True)
+        return JobsResponse(ok=False, count=0, jobs=[], error=f"Error: {str(e)}")
 
 
 @app.get("/debug")

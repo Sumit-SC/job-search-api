@@ -5,3 +5,4 @@ playwright==1.49.0
 python-dateutil==2.9.0.post0
 feedparser==6.0.11
 psutil==5.9.8
+python-jobspy==1.1.82

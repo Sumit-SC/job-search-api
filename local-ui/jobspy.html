@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobSpy Viewer - Local UI</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕵️ JobSpy Viewer</h1>
+            <p class="subtitle">Fetch jobs via python-jobspy through the FastAPI backend</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">Core API</a>
+                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link nav-link-active">JobSpy</a>
+            </nav>
+        </header>
+
+        <div class="controls-section">
+            <div class="card">
+                <h2>Fetch via JobSpy backend</h2>
+                <p class="description">
+                    Calls <code>GET /jobspy</code> on your local API, which uses the <code>python-jobspy</code> library
+                    to scrape LinkedIn, Indeed, Glassdoor, ZipRecruiter, etc., then adapts results into the same Job model.
+                </p>
+                <div class="search-controls">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="jobspy-query">Query:</label>
+                            <input type="text" id="jobspy-query" placeholder="e.g., data analyst" value="data analyst">
+                        </div>
+                        <div class="input-group">
+                            <label for="jobspy-location">Location:</label>
+                            <input type="text" id="jobspy-location" placeholder="e.g., India, USA, remote" value="remote">
+                        </div>
+                        <div class="input-group">
+                            <label for="jobspy-days">Days:</label>
+                            <input type="number" id="jobspy-days" min="1" max="30" value="3">
+                        </div>
+                        <div class="input-group">
+                            <label for="jobspy-limit">Limit:</label>
+                            <input type="number" id="jobspy-limit" min="1" max="400" value="100">
+                        </div>
+                    </div>
+                    <button id="jobspy-fetch-btn" class="btn btn-primary">
+                        <span class="btn-text">🕵️ Fetch via JobSpy</span>
+                        <span class="btn-loader" style="display: none;">⏳ Fetching...</span>
+                    </button>
+                    <div id="jobspy-status" class="status-message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="results-header">
+                <h2 id="jobspy-results-title">JobSpy Results</h2>
+                <div id="jobspy-results-count" class="results-count"></div>
+            </div>
+            <div id="jobspy-jobs-container" class="jobs-container">
+                <div class="empty-state">
+                    <p>👆 Enter query + location and click “Fetch via JobSpy”.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="jobspy.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Search API - Local UI</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Job Search API</h1>
+            <p class="subtitle">Local Testing Interface</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link nav-link-active">Core API</a>
+                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link">JobSpy</a>
+            </nav>
+        </header>
+
+        <div class="controls-section">
+            <div class="card">
+                <h2>Load & Refresh Data</h2>
+                <p class="description">Step 1: Refresh from selected sources (scrapes new data). Step 2: Fetch saved jobs from the JSON store. Step 3: Use the Search panel to filter what’s already loaded.</p>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Use sources:</label>
+                        <div class="pill-group">
+                            <label class="pill">
+                                <input type="radio" name="source-mode" value="rss" checked>
+                                RSS only
+                            </label>
+                            <label class="pill">
+                                <input type="radio" name="source-mode" value="headless">
+                                Headless only
+                            </label>
+                            <label class="pill">
+                                <input type="radio" name="source-mode" value="all">
+                                All
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="refresh-controls">
+                    <h3 class="section-title">Step 1 – Refresh from sources</h3>
+                    <p class="section-help">
+                        <strong>How it works:</strong> Fetches RSS feeds from job boards (or runs headless scrapers), then filters jobs by:
+                        <br>• <strong>Query:</strong> Matches job title/description (very lenient - "data analyst" matches most data-related jobs)
+                        <br>• <strong>Days:</strong> Only keeps jobs posted in the last N days
+                        <br>Results are saved to the JSON store for Step 2.
+                    </p>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="refresh-query">Search query (for scraping):</label>
+                            <input type="text" id="refresh-query" placeholder="e.g., data analyst" value="data analyst">
+                            <small class="input-hint">Used to filter jobs during scraping (not sent to job board URLs)</small>
+                        </div>
+                        <div class="input-group">
+                            <label for="refresh-days">Max age (days):</label>
+                            <input type="number" id="refresh-days" min="1" max="30" value="3">
+                            <small class="input-hint">Only scrape jobs posted in last N days</small>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <button id="refresh-btn" class="btn btn-primary">
+                            <span class="btn-text">🔄 Step 1 – Refresh from sources</span>
+                            <span class="btn-loader" style="display: none;">⏳ Refreshing...</span>
+                        </button>
+                    </div>
+                    <div id="refresh-status" class="status-message"></div>
+                </div>
+
+                <hr class="card-divider" />
+
+                <div class="fetch-controls">
+                    <h3 class="section-title">Step 2 – Fetch saved data</h3>
+                    <p class="section-help">Loads existing jobs via <code>GET /jobs</code> without running scrapers.</p>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="fetch-days">Days (saved jobs):</label>
+                            <input type="number" id="fetch-days" min="1" max="30" value="7">
+                        </div>
+                        <div class="input-group">
+                            <label for="fetch-limit">Limit:</label>
+                            <input type="number" id="fetch-limit" min="1" max="400" value="200">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <button id="fetch-btn" class="btn btn-secondary">
+                            <span class="btn-text">📂 Step 2 – Fetch saved data</span>
+                            <span class="btn-loader" style="display: none;">⏳ Loading...</span>
+                        </button>
+                    </div>
+                    <div id="fetch-status" class="status-message"></div>
+                    <div class="datetime-info">
+                        <div id="last-fetched-info" class="datetime-item">Last fetched: Never</div>
+                        <div id="current-fetched-info" class="datetime-item">Current fetched: -</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Search & Filter Jobs</h2>
+                <p class="description">Step 3: Filter and search through the jobs already loaded from “Fetch saved data” or “Refresh from sources”. This does not hit the API again.</p>
+                <div class="search-controls">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="search-query">Query:</label>
+                            <input type="text" id="search-query" placeholder="e.g., python developer">
+                        </div>
+                        <div class="input-group">
+                            <label for="search-location-text">Location contains:</label>
+                            <input type="text" id="search-location-text" placeholder="e.g., Pune, India, US, Europe">
+                        </div>
+                        <div class="input-group">
+                            <label for="search-days">Days:</label>
+                            <input type="number" id="search-days" min="1" max="30" value="3">
+                        </div>
+                        <div class="input-group">
+                            <label for="search-limit">Limit:</label>
+                            <input type="number" id="search-limit" min="1" max="400" value="50">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Sources:</label>
+                            <div class="pill-group" id="search-sources-group">
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="weworkremotely">
+                                    WWR
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="jobscollider">
+                                    Jobscollider
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="remoteok">
+                                    RemoteOK
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="remotive">
+                                    Remotive
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="wellfound">
+                                    Wellfound
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="indeed">
+                                    Indeed
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="remote.co">
+                                    Remote.co
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="jobspresso">
+                                    Jobspresso
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="himalayas">
+                                    Himalayas
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="authenticjobs">
+                                    Authentic
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="linkedin">
+                                    LinkedIn
+                                </label>
+                                <label class="pill">
+                                    <input type="checkbox" class="source-checkbox" value="naukri">
+                                    Naukri
+                                </label>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="search-sort">Sort By:</label>
+                            <select id="search-sort">
+                                <option value="date">Date (Newest)</option>
+                                <option value="relevance">Relevance</option>
+                                <option value="source">Source</option>
+                                <option value="salary">Salary (Highest)</option>
+                                <option value="currency">Currency</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="search-yoe-min">Min YOE:</label>
+                            <input type="number" id="search-yoe-min" min="0" placeholder="Any">
+                        </div>
+                        <div class="input-group">
+                            <label for="search-yoe-max">Max YOE:</label>
+                            <input type="number" id="search-yoe-max" min="0" placeholder="Any">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="search-remote-only">
+                                Only remote / mostly remote
+                            </label>
+                        </div>
+                        <div class="input-group">
+                            <label for="search-currency">Currency:</label>
+                            <select id="search-currency">
+                                <option value="">All currencies</option>
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                                <option value="INR">INR</option>
+                                <option value="CAD">CAD</option>
+                                <option value="AUD">AUD</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="search-btn" class="btn btn-secondary">
+                        <span class="btn-text">🔎 Search Jobs</span>
+                        <span class="btn-loader" style="display: none;">⏳ Searching...</span>
+                    </button>
+                </div>
+                <div id="search-status" class="status-message"></div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="results-header">
+                <h2 id="results-title">Jobs</h2>
+                <div id="results-count" class="results-count"></div>
+            </div>
+            <div id="jobs-container" class="jobs-container">
+                <div class="empty-state">
+                    <p>👆 Use the controls above to refresh or search for jobs</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

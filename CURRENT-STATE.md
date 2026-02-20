@@ -25,7 +25,7 @@ So: **current working plan for “the product”** = Vercel APIs + static fronte
 - **POST /refresh** — Runs `scrape_all()` (all RSS/HTTP + optional headless), **overwrites** `data/jobs.json`, returns the same job list. Default `q=data analyst`, `days=3`.
 - **GET /debug** — Runs a subset of scrapers (weworkremotely, jobscollider, remoteok, remotive_api, indeed_rss), returns counts; does not save.
 
-**Storage:** File-based. `JOBS_SCRAPER_DATA_DIR` (default `data`), file `jobs.json`. On Railway, that’s ephemeral unless you use a volume or external store — so a new deploy or restart can wipe stored jobs until the next `POST /refresh`.
+**Storage:** File-based. `JOBS_SCRAPER_DATA_DIR` (default `data`), file `jobs.json`. On Railway, that’s ephemeral unless you use a Railway Postgres/Redis or external store — so a new deploy or restart can wipe stored jobs until the next `POST /refresh`.
 
 **Scraping (job-search-api):**
 
@@ -39,7 +39,7 @@ So the **current working plan for Railway** is: one app that can refresh (scrape
 ## What’s *not* done (Railway)
 
 - **Frontend** does not call Railway. To “use” Railway you’d change `JOB_PROXY_URL` to a proxy that talks to Railway, or point the frontend at Railway directly (CORS is open).
-- **Persistent storage** on Railway: `data/jobs.json` is not durable by default; you’d need a volume or S3/DB for real persistence.
+- **Persistent storage** on Railway: `data/jobs.json` is not durable by default; you’d need a Railway Postgres/Redis or S3/DB for real persistence.
 - **API features from PREFERENCES:** Not implemented yet: `sort=relevance`, `yoe_min`/`yoe_max`, `match_score`, salary/currency, group-by-currency, visa keyword detection, skill-based matching. GET /jobs has only `q`, `days`, `limit`, `source`, `page`, `per_page`.
 - **Job model:** No `match_score`, salary, or currency on the `Job` model in code yet.
 - **More headless scrapers:** Hirist, Foundit, Glassdoor, Unstop, Shine, etc. are in the plan (PROJECT-PLAN.md, SOURCES_STATUS.md) but not in `scraper.py` yet.
@@ -62,7 +62,7 @@ We’re still in Phase 1: Railway can refresh and serve, but filters/sort/match_
 | Item | Status |
 |------|--------|
 | Railway app runs (health, jobs, refresh, debug) | ✅ Done |
-| Storage (file-based) | ✅ Done (ephemeral on Railway unless you add volume/DB) |
+| Storage (file-based) | ✅ Done (ephemeral on Railway unless you add Postgres/Redis/DB) |
 | Pagination (page/per_page) on GET /jobs | ✅ Done |
 | 11 RSS/HTTP scrapers in scrape_all | ✅ In code (quality varies by source) |
 | 3 headless scrapers (LinkedIn, Indeed, Naukri) | ✅ In code (optional, may timeout on Railway) |

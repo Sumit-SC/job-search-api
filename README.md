@@ -69,27 +69,35 @@ curl "http://localhost:8000/jobs?days=3&limit=50"
 - Select "Deploy from GitHub repo"
 - Choose `job-search-api` repository
 
-### Step 2: Add Persistent Storage (Volume)
-Railway uses **Volumes** for persistent storage:
+### Step 2: Add Persistent Storage (Optional)
 
-**Method A - Command Palette:**
-1. Press `Ctrl+K` (or `Cmd+K` on Mac) in Railway dashboard
-2. Type "volume" and select "Create Volume"
-3. Select your `job-search-api` service
-4. Set mount path to: `/app/data`
+**Note:** Railway doesn't have volumes. For persistent storage, use one of these options:
 
-**Method B - Right-click:**
-1. Right-click on your service card in Railway dashboard
-2. Select "Create Volume" or "Add Volume"
-3. Set mount path to: `/app/data`
+**Option A: Railway Postgres (Recommended)**
+1. In Railway dashboard → "New" → "Database" → "Add Postgres"
+2. Railway automatically sets `DATABASE_URL` environment variable
+3. Update `storage.py` to use Postgres instead of JSON file
+4. Benefits: True persistence, better querying, scales well
+
+**Option B: Railway Redis (For Caching)**
+1. In Railway dashboard → "New" → "Database" → "Add Redis"
+2. Railway automatically sets `REDIS_URL` environment variable
+3. Update `storage.py` to use Redis for caching
+4. Benefits: Fast caching, persists between requests
+
+**Option C: Use `/refresh` Directly (No Storage)**
+- Call `/refresh` endpoint directly from your UI
+- No database setup needed, but slower (30-45s per request)
 
 ### Step 3: Environment Variables
 In your Railway service settings, add:
 
 ```
-JOBS_SCRAPER_DATA_DIR=/app/data
+JOBS_SCRAPER_DATA_DIR=/app/data  # Only needed if using file storage (ephemeral)
 ENABLE_HEADLESS=1
 ```
+
+**Note:** If using Postgres or Redis, you don't need `JOBS_SCRAPER_DATA_DIR` - update `storage.py` to use the database instead.
 
 ### Step 4: Deploy
 Railway will auto-detect the Dockerfile and deploy. The start command is already configured in the Dockerfile.

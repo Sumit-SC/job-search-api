@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import html
@@ -12,6 +12,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
 from .scraper import scrape_all
 from .storage import load_jobs, save_jobs
+
+
+def normalize_datetime(dt: datetime | None) -> datetime | None:
+    """
+    Normalize datetime to timezone-naive UTC for safe comparison.
+    Converts timezone-aware datetimes to UTC-naive.
+    Returns None if input is None.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        # Convert timezone-aware to UTC, then remove timezone info
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 # Configure logging
 logging.basicConfig(
@@ -159,8 +173,9 @@ async def get_jobs(
         q_lower = q.lower() if q else None
 
         for job in all_jobs:
-            # Date filter
-            if job.date and job.date < cutoff:
+            # Date filter - normalize datetime before comparison
+            job_date_normalized = normalize_datetime(job.date)
+            if job_date_normalized and job_date_normalized < cutoff:
                 continue
             # Source filter
             if source and job.source != source:
@@ -201,13 +216,13 @@ async def get_jobs(
             
             filtered.append(job)
 
-        # Sort
+        # Sort - normalize datetimes before sorting
         if sort == "relevance":
-            filtered.sort(key=lambda j: (j.match_score or 0.0, j.date or datetime.min), reverse=True)
+            filtered.sort(key=lambda j: (j.match_score or 0.0, normalize_datetime(j.date) or datetime.min), reverse=True)
         elif sort == "source":
-            filtered.sort(key=lambda j: (j.source, j.date or datetime.min), reverse=True)
+            filtered.sort(key=lambda j: (j.source, normalize_datetime(j.date) or datetime.min), reverse=True)
         else:  # default: date
-            filtered.sort(key=lambda j: (j.date or datetime.min), reverse=True)
+            filtered.sort(key=lambda j: (normalize_datetime(j.date) or datetime.min), reverse=True)
         
         total = len(filtered)
 
@@ -288,7 +303,9 @@ async def get_jobs_grouped_by_currency(
         q_lower = q.lower() if q else None
 
         for job in all_jobs:
-            if job.date and job.date < cutoff:
+            # Normalize datetime before comparison
+            job_date_normalized = normalize_datetime(job.date)
+            if job_date_normalized and job_date_normalized < cutoff:
                 continue
             if source and job.source != source:
                 continue
@@ -348,7 +365,9 @@ async def get_jobs_rss(
     filtered: List[Job] = []
 
     for job in all_jobs:
-        if job.date and job.date < cutoff:
+        # Normalize datetime before comparison
+        job_date_normalized = normalize_datetime(job.date)
+        if job_date_normalized and job_date_normalized < cutoff:
             continue
         if source and job.source != source:
             continue
@@ -358,8 +377,8 @@ async def get_jobs_rss(
                 continue
         filtered.append(job)
 
-    # Sort newest first and apply limit
-    filtered.sort(key=lambda j: (j.date or datetime.min), reverse=True)
+    # Sort newest first and apply limit - normalize datetime before sorting
+    filtered.sort(key=lambda j: (normalize_datetime(j.date) or datetime.min), reverse=True)
     jobs = filtered[:limit]
 
     base_link = str(request.base_url).rstrip("/")
@@ -511,8 +530,8 @@ async def debug_scrapers() -> dict:
 @app.get("/debug/headless")
 async def debug_headless_scrapers() -> dict:
     """
-    Debug endpoint: test the 3 headless scrapers (LinkedIn, Indeed, Naukri).
-    Requires Playwright + ENABLE_HEADLESS=1. Can be slow (up to ~90s).
+    Debug endpoint: test all 8 headless scrapers (LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor).
+    Requires Playwright + ENABLE_HEADLESS=1. Can be slow (up to ~90s per scraper).
     """
     import os
     from .scraper import (

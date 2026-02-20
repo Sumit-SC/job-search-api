@@ -116,6 +116,28 @@ header h1 {
     margin-bottom: 40px;
 }
 
+.controls-section--stacked {
+    grid-template-columns: 1fr;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.select-multi {
+    min-height: 100px;
+    padding: 6px 8px;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    color: var(--text-primary);
+}
+
+.select-multi option {
+    padding: 4px 6px;
+}
+
 .card {
     background: var(--card-bg);
     border-radius: var(--radius);

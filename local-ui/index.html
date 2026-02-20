@@ -10,7 +10,7 @@
     <div class="container">
         <header>
             <h1>🔍 Job Search API</h1>
-            <p class="subtitle-brand">mitSu</p>
+            <p class="subtitle-brand">~ made by mitSu</p>
             <nav class="top-nav">
                 <a href="index.html" class="nav-link nav-link-active">Core API</a>
                 <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
@@ -18,8 +18,8 @@
             </nav>
         </header>
 
-        <div class="controls-section">
-            <div class="card">
+        <div class="controls-section controls-section--stacked">
+            <div class="card card-step1-2">
                 <h2>Load & Refresh Data</h2>
                 <p class="description">Step 1: Refresh from selected sources (scrapes new data). Step 2: Fetch saved jobs from the JSON store. Step 3: Use the Search panel to filter what’s already loaded.</p>
 
@@ -101,9 +101,10 @@
                 </div>
             </div>
 
-            <div class="card">
+            <!-- Step 3: shown only after user does Step 1 or Step 2 -->
+            <div id="step3-card" class="card card-step3 hidden">
                 <h2>Search & Filter Jobs</h2>
-                <p class="description">Step 3: Filter and search through the jobs already loaded from “Fetch saved data” or “Refresh from sources”. This does not hit the API again.</p>
+                <p class="description">Step 3: Filter and search through the jobs already loaded. This does not hit the API again.</p>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group">
@@ -125,57 +126,23 @@
                     </div>
                     <div class="input-row">
                         <div class="input-group">
-                            <label>Sources:</label>
-                            <div class="pill-group" id="search-sources-group">
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="weworkremotely">
-                                    WWR
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="jobscollider">
-                                    Jobscollider
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="remoteok">
-                                    RemoteOK
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="remotive">
-                                    Remotive
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="wellfound">
-                                    Wellfound
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="indeed">
-                                    Indeed
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="remote.co">
-                                    Remote.co
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="jobspresso">
-                                    Jobspresso
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="himalayas">
-                                    Himalayas
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="authenticjobs">
-                                    Authentic
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="linkedin">
-                                    LinkedIn
-                                </label>
-                                <label class="pill">
-                                    <input type="checkbox" class="source-checkbox" value="naukri">
-                                    Naukri
-                                </label>
-                            </div>
+                            <label for="search-sources-select">Sources (multi-select):</label>
+                            <select id="search-sources-select" multiple class="select-multi">
+                                <option value="weworkremotely">WWR</option>
+                                <option value="jobscollider">Jobscollider</option>
+                                <option value="remoteok">RemoteOK</option>
+                                <option value="remotive">Remotive</option>
+                                <option value="wellfound">Wellfound</option>
+                                <option value="indeed">Indeed</option>
+                                <option value="remote.co">Remote.co</option>
+                                <option value="jobspresso">Jobspresso</option>
+                                <option value="himalayas">Himalayas</option>
+                                <option value="authenticjobs">Authentic</option>
+                                <option value="stackoverflow">Stack Overflow</option>
+                                <option value="linkedin">LinkedIn</option>
+                                <option value="naukri">Naukri</option>
+                            </select>
+                            <small class="input-hint">Hold Ctrl/Cmd to select multiple; leave empty for all sources.</small>
                         </div>
                         <div class="input-group">
                             <label for="search-sort">Sort By:</label>
@@ -185,6 +152,18 @@
                                 <option value="source">Source</option>
                                 <option value="salary">Salary (Highest)</option>
                                 <option value="currency">Currency</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="search-currency">Currency:</label>
+                            <select id="search-currency">
+                                <option value="">All currencies</option>
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                                <option value="INR">INR</option>
+                                <option value="CAD">CAD</option>
+                                <option value="AUD">AUD</option>
                             </select>
                         </div>
                         <div class="input-group">
@@ -202,18 +181,6 @@
                                 <input type="checkbox" id="search-remote-only">
                                 Only remote / mostly remote
                             </label>
-                        </div>
-                        <div class="input-group">
-                            <label for="search-currency">Currency:</label>
-                            <select id="search-currency">
-                                <option value="">All currencies</option>
-                                <option value="USD">USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GBP">GBP</option>
-                                <option value="INR">INR</option>
-                                <option value="CAD">CAD</option>
-                                <option value="AUD">AUD</option>
-                            </select>
                         </div>
                     </div>
                     <button id="search-btn" class="btn btn-secondary">
@@ -238,7 +205,7 @@
         </div>
 
         <footer class="page-footer">
-            <p class="footer-by">Made by Sumit S C (mmitsu)</p>
+            <p class="footer-by">Made with ❤️ & 🧑‍💻Sumit S C (mitSu)</p>
             <p class="footer-ack">Acknowledgments: This UI and the Job Search API use open-source repos, RSS feeds, and tools including FastAPI, feedparser, python-jobspy, rssjobs.app, and Cursor. No social links; attribution only.</p>
         </footer>
     </div>

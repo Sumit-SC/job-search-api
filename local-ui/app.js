@@ -90,9 +90,9 @@ fetchBtn.addEventListener('click', async () => {
             updateDateTimeDisplay();
             
             fetchStatus.className = 'status-message success show';
-            fetchStatus.textContent = `✅ Loaded ${allJobs.length} saved jobs. Use “Search & Filter Jobs” to narrow them down.`;
+            fetchStatus.textContent = `✅ Loaded ${allJobs.length} saved jobs. Use “Search & Filter Jobs” below to narrow them down.`;
 
-            // Apply current filters on the freshly loaded data
+            showStep3Card();
             applyFiltersAndRender();
         } else {
             throw new Error(data.error || 'Fetch failed');
@@ -169,9 +169,9 @@ refreshBtn.addEventListener('click', async () => {
             updateDateTimeDisplay();
             
             refreshStatus.className = 'status-message success show';
-            refreshStatus.textContent = `✅ Successfully refreshed! Scraped ${allJobs.length} jobs. Use “Step 2 – Fetch saved data” to load them, then “Search & Filter Jobs” to narrow them down.`;
+            refreshStatus.textContent = `✅ Successfully refreshed! Scraped ${allJobs.length} jobs. Use “Search & Filter Jobs” below to narrow them down.`;
 
-            // Immediately show refreshed data with current filters
+            showStep3Card();
             applyFiltersAndRender();
         } else {
             throw new Error(data.error || 'Refresh failed');
@@ -226,14 +226,21 @@ function searchJobs() {
     searchBtn.querySelector('.btn-loader').style.display = 'none';
 }
 
+function showStep3Card() {
+    const step3 = document.getElementById('step3-card');
+    if (step3 && allJobs.length > 0) step3.classList.remove('hidden');
+}
+
 // Apply current filters on in-memory jobs and render
 function applyFiltersAndRender() {
-    const query = document.getElementById('search-query').value.trim().toLowerCase() || null;
-    const locationText = document.getElementById('search-location-text').value.trim().toLowerCase() || null;
-    const days = parseInt(document.getElementById('search-days').value) || 3;
-    const limit = parseInt(document.getElementById('search-limit').value) || 50;
-    const sourceCheckboxes = Array.from(document.querySelectorAll('.source-checkbox:checked'));
-    const selectedSources = sourceCheckboxes.map(cb => cb.value);
+    const queryEl = document.getElementById('search-query');
+    const locationEl = document.getElementById('search-location-text');
+    const query = (queryEl && queryEl.value.trim().toLowerCase()) || null;
+    const locationText = (locationEl && locationEl.value.trim().toLowerCase()) || null;
+    const days = parseInt(document.getElementById('search-days')?.value) || 3;
+    const limit = parseInt(document.getElementById('search-limit')?.value) || 50;
+    const sourcesSelect = document.getElementById('search-sources-select');
+    const selectedSources = sourcesSelect ? Array.from(sourcesSelect.selectedOptions).map(o => o.value) : [];
     const sort = document.getElementById('search-sort').value || 'date';
     const yoeMinVal = document.getElementById('search-yoe-min').value;
     const yoeMaxVal = document.getElementById('search-yoe-max').value;

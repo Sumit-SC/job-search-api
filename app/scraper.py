@@ -2127,15 +2127,12 @@ async def scrape_all(
     enable_headless = enable_headless and PLAYWRIGHT_AVAILABLE and os.getenv("ENABLE_HEADLESS", "1") == "1"
     use_jobspy = os.getenv("USE_JOBSPY", "0") == "1"
     mode = (mode or "all").lower()
-    # Optional cap for Railway free tier (e.g. set MAX_SCRAPER_SOURCES=12 to run only 12 sources)
-    max_sources_raw = os.getenv("MAX_SCRAPER_SOURCES", "")
-    max_sources = int(max_sources_raw) if max_sources_raw.isdigit() else None
 
     tasks = []
 
     # RSS/HTTP sources (fast, reliable)
     if mode in ("rss", "all"):
-        rss_tasks = [
+        tasks.extend(
             [
                 scrape_weworkremotely(days=days, query=query),
                 scrape_jobscollider(days=days, query=query),
@@ -2151,10 +2148,8 @@ async def scrape_all(
                 scrape_himalayas(days=days, query=query),
                 scrape_authentic_jobs(days=days, query=query),
                 scrape_stackoverflow_jobs(days=days, query=query),  # Stack Overflow Jobs RSS
-        ]
-        if max_sources is not None:
-            rss_tasks = rss_tasks[:max_sources]
-        tasks.extend(rss_tasks)
+            ]
+        )
 
     # Optional: python-jobspy backend for big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
     if use_jobspy and mode in ("headless", "all"):
@@ -2178,20 +2173,14 @@ async def scrape_all(
                         scrape_glassdoor(days=days, query=query, browser=browser),
                     ]
                     tasks.extend(headless_tasks)
-                    if max_sources is not None:
-                        tasks = tasks[:max_sources]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                 finally:
                     await browser.close()
         except Exception as e:
             logger.error(f"Headless scraping failed: {e}", exc_info=True)
             # If headless fails, fall back to HTTP-only
-            if max_sources is not None:
-                tasks = tasks[:max_sources]
             results = await asyncio.gather(*tasks, return_exceptions=True)
     else:
-        if max_sources is not None:
-            tasks = tasks[:max_sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
     
     jobs: List[Job] = []

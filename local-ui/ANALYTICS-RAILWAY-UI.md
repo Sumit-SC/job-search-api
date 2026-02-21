@@ -12,18 +12,21 @@ The Railway-hosted local UI (Core API, JobSpy, RSSJobs pages) sends visit and ti
 - **Default site:** `railway-ui`
 - **Default endpoint:** `https://events.colab.indevs.in/api/events`
 
-**Usage in any HTML page:**
+**Usage in any HTML page:**  
+Because `analytics.js` is loaded with `defer`, the init must run **after** it (e.g. in `DOMContentLoaded`). Otherwise the inline script runs before the deferred script and `initAnalyticsTracking` is undefined, so no events are sent.
 
 ```html
 <script src="analytics.js" defer></script>
 <script>
-  if (typeof initAnalyticsTracking === "function") {
-    initAnalyticsTracking({
-      site: "railway-ui",
-      baseEvent: "core",   /* or "jobspy", "rssjobs", etc. */
-      endpoint: "https://events.colab.indevs.in/api/events"
-    });
-  }
+  document.addEventListener("DOMContentLoaded", function () {
+    if (typeof initAnalyticsTracking === "function") {
+      initAnalyticsTracking({
+        site: "railway-ui",
+        baseEvent: "core",   /* or "jobspy", "rssjobs", "monitor", etc. */
+        endpoint: "https://events.colab.indevs.in/api/events"
+      });
+    }
+  });
 </script>
 ```
 
@@ -38,7 +41,10 @@ The Railway-hosted local UI (Core API, JobSpy, RSSJobs pages) sends visit and ti
 |------------|-----------|
 | index.html (Core API) | `core`   |
 | jobspy.html          | `jobspy` |
-| rssjobs.html         | `rssjobs` |
+| jobspy-tech.html     | `jobspy-tech` |
+| rssjobs.html        | `rssjobs` |
+| interview-prep.html  | `interview-prep` |
+| monitor.html        | `monitor` |
 
 **Debug:** Add `?analytics_debug=1` to the URL or set `localStorage.setItem("analytics_debug", "1")` to see console logs.
 

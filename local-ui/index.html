@@ -219,9 +219,11 @@
     <script src="theme.js" defer></script>
     <script src="analytics.js" defer></script>
     <script>
-      if (typeof initAnalyticsTracking === "function") {
-        initAnalyticsTracking({ site: "railway-ui", baseEvent: "core", endpoint: "https://events.colab.indevs.in/api/events" });
-      }
+      document.addEventListener("DOMContentLoaded", function () {
+        if (typeof initAnalyticsTracking === "function") {
+          initAnalyticsTracking({ site: "railway-ui", baseEvent: "core", endpoint: "https://events.colab.indevs.in/api/events" });
+        }
+      });
     </script>
     <script src="app.js"></script>
 </body>

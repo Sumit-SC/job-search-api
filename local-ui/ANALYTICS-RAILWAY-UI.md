@@ -110,3 +110,26 @@ Ensure your Worker is deployed and the ingest URL is:
 (or one of the aliases: `/api/track`, `/events`, `/track`, `/ping`, `/log`)
 
 The Railway UI uses this same endpoint; no extra config is needed beyond loading `analytics.js` and calling `initAnalyticsTracking` with `site: "railway-ui"` and the correct `baseEvent` per page.
+
+---
+
+## 4. Why analytics might not show Railway / job search
+
+### Where to look in the dashboard
+
+- **Railway UI (direct visits)**  
+  When users open the Railway UI directly (e.g. `https://your-app.up.railway.app/ui/`), events are sent with `site: "railway-ui"`. In the dashboard, use the **Jobs** toggle (or `?site=railway-ui`) to see only those events.
+
+- **Analytics-lab Jobs page with Railway backend**  
+  When users use the Jobs page inside analytics-lab and select **Railway** as the API backend, the page still has `site: "analytics-lab"`. So those visits appear under **Playground**, not Jobs. To see that they used the Railway backend, look for events named **`jobs_search_railway`** (and optionally in Raw JSON: `meta.backend`, `meta.query`, `meta.days`).
+
+- **Job search actions**  
+  Each time jobs are fetched (initial load or Refresh), the Jobs page sends a `jobs_search_railway` or `jobs_search_vercel` event. So in **Playground** view, filter or scan the **Event** column for `jobs_search_railway` to confirm Railway job search usage.
+
+### Checklist if nothing appears
+
+1. **Dashboard filter** — For Railway UI traffic, open the dashboard and click **Jobs**. For analytics-lab + Railway backend usage, stay on **Playground** and look for `jobs_search_railway` events.
+2. **Worker and URL** — The Worker must be deployed at the host you send to (e.g. `events.colab.indevs.in`). D1 must be bound as `ANALYTICS_DB`.
+3. **Railway UI** — Confirm `/ui/analytics.js` returns 200 (e.g. open `https://your-app.up.railway.app/ui/analytics.js`). If the script fails to load, no events are sent.
+4. **Ad-blockers / privacy** — `sendBeacon` or `fetch` to the events domain can be blocked. Test in an incognito window or with extensions disabled; use `?analytics_debug=1` on the page to see console logs.
+5. **CORS** — The Worker allows any origin (`Access-Control-Allow-Origin: *` or echoed `Origin`). If you use a custom domain for the Worker, ensure it matches the URL used in `initAnalyticsTracking`.

@@ -496,17 +496,22 @@ async def jobspy_jobs(
     location: Optional[str] = Query(None, description="Location string passed to jobspy (city, country, etc.)"),
     days: int = Query(3, ge=1, le=30, description="Max age of jobs in days (converted to hours_old for jobspy)"),
     limit: int = Query(100, ge=1, le=400, description="Max results per response"),
+    sites: Optional[str] = Query(None, description="Comma-separated site names (e.g. indeed,linkedin,glassdoor)"),
+    preset: Optional[str] = Query(None, description="Preset: popular, remote, or all"),
 ) -> JobsResponse:
     """
-    Fetch jobs directly from python-jobspy (LinkedIn, Indeed, Glassdoor, ZipRecruiter) without touching local storage.
-    Useful for comparing jobspy-only results vs our own scrapers.
+    Fetch jobs from python-jobspy. Use sites= or preset= (popular, remote, all) to choose boards.
     """
     try:
         from .jobspy_integration import scrape_jobspy_sources
     except ImportError:
         return JobsResponse(ok=False, count=0, jobs=[], error="python-jobspy is not installed")
 
-    jobs = await scrape_jobspy_sources(days=days, query=q, location=location, results_wanted=limit)
+    site_list = [x.strip() for x in sites.split(",")] if sites and sites.strip() else None
+    jobs = await scrape_jobspy_sources(
+        days=days, query=q, location=location, results_wanted=limit,
+        site_name=site_list, preset=preset,
+    )
     return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
 
 

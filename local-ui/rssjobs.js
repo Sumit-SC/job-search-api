@@ -1,6 +1,14 @@
-const RSSJOBS_API_BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin)
-    ? window.location.origin
-    : 'http://localhost:8000';
+// API base: ?api_base=URL override, else same-origin (Railway /ui/ or localhost), else fallback
+function getRssjobsApiBase() {
+    if (typeof window === 'undefined' || !window.location) return 'http://localhost:8000';
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('api_base') || params.get('api');
+    if (fromQuery && fromQuery.startsWith('http')) return fromQuery.replace(/\/$/, '');
+    const origin = window.location.origin;
+    if (origin && origin !== 'null' && origin !== 'file://') return origin;
+    return 'https://job-search-api-production-5d5d.up.railway.app';
+}
+const RSSJOBS_API_BASE_URL = getRssjobsApiBase();
 
 const rssFetchBtn = document.getElementById('rss-fetch-btn');
 const rssStatus = document.getElementById('rss-status');

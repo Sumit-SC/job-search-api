@@ -23,28 +23,44 @@
             <div class="card">
                 <h2>Fetch via JobSpy backend</h2>
                 <p class="description">
-                    Calls <code>GET /jobspy</code> on your local API, which uses the <code>python-jobspy</code> library
-                    to scrape LinkedIn, Indeed, Glassdoor, ZipRecruiter, etc., then adapts results into the same Job model.
+                    Scrape 65+ job boards via <code>GET /jobspy</code>. Choose a preset (Popular, Remote, All) or pick boards manually.
                 </p>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group">
+                            <label for="jobspy-preset">Boards preset:</label>
+                            <select id="jobspy-preset" class="input-select">
+                                <option value="popular" selected>Popular (Indeed, LinkedIn, Google, Glassdoor, ZipRecruiter)</option>
+                                <option value="remote">Remote (RemoteOK, Remotive, WeWorkRemotely, Jobicy, Himalayas, etc.)</option>
+                                <option value="all">All (65+ boards)</option>
+                                <option value="manual">Manual – select boards below</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
                             <label for="jobspy-query">Query:</label>
-                            <input type="text" id="jobspy-query" placeholder="e.g., data analyst/software engineer/data engineer" value="analyst">
+                            <input type="text" id="jobspy-query" placeholder="e.g., data analyst" value="data analyst">
                         </div>
                         <div class="input-group">
                             <label for="jobspy-location">Location:</label>
-                            <input type="text" id="jobspy-location" placeholder="e.g., India, USA, remote" value="pune">
+                            <input type="text" id="jobspy-location" placeholder="e.g., remote, pune, USA" value="remote">
                         </div>
                         <div class="input-group">
                             <label for="jobspy-days">Days:</label>
-                            <input type="number" id="jobspy-days" min="1" max="30" value="1">
+                            <input type="number" id="jobspy-days" min="1" max="30" value="3">
                         </div>
                         <div class="input-group">
                             <label for="jobspy-limit">Limit:</label>
                             <input type="number" id="jobspy-limit" min="1" max="400" value="100">
                         </div>
                     </div>
+                    <div id="jobspy-manual-boards-wrap" class="input-row" style="display: none;">
+                        <div class="input-group" style="flex: 1;">
+                            <label>Select boards (manual mode):</label>
+                            <div id="jobspy-manual-boards" class="jobspy-boards-multiselect"></div>
+                            <small class="input-hint">Select one or more. Popular: indeed, linkedin, glassdoor, zip_recruiter, google. Remote: remoteok, remotive, weworkremotely.</small>
+                        </div>
+                    </div>
+                    <p id="jobspy-next-hint" class="jobspy-hint"></p>
                     <button id="jobspy-fetch-btn" class="btn btn-primary">
                         <span class="btn-text">🕵️ Fetch via JobSpy</span>
                         <span class="btn-loader" style="display: none;">⏳ Fetching...</span>

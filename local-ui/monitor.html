@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitor – Job Search API</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .monitor-gate { max-width: 400px; margin: 2rem auto; padding: 2rem; text-align: center; }
+        .monitor-gate input { width: 100%; padding: 0.6rem 0.75rem; margin: 0.75rem 0; border: 1px solid var(--border-color); border-radius: var(--radius); font-size: 1rem; }
+        .monitor-gate button { width: 100%; padding: 0.6rem 1rem; background: var(--primary-color); color: white; border: none; border-radius: var(--radius); font-weight: 600; cursor: pointer; }
+        .monitor-gate button:hover { background: var(--primary-hover); }
+        .monitor-gate .error { color: var(--error-color); font-size: 0.9rem; margin-top: 0.5rem; }
+        .monitor-dashboard { display: none; }
+        .monitor-dashboard.visible { display: block; }
+        .monitor-refresh { margin-bottom: 1rem; }
+        .monitor-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .monitor-table th, .monitor-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .monitor-table th { background: var(--bg-color); font-weight: 600; }
+        .monitor-table tr:hover { background: rgba(0,0,0,.02); }
+        .status-up { color: var(--success-color); font-weight: 600; }
+        .status-down { color: var(--error-color); font-weight: 600; }
+        .monitor-detail { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .monitor-detail pre { background: var(--bg-color); padding: 0.5rem; border-radius: 4px; overflow-x: auto; max-height: 200px; overflow-y: auto; text-align: left; }
+        .monitor-timestamp { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem; }
+        .monitor-endpoints { margin-top: 1.5rem; }
+        .monitor-endpoints h2 { margin-bottom: 0.5rem; }
+        .monitor-endpoints table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .monitor-endpoints th, .monitor-endpoints td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .monitor-endpoints th { background: var(--bg-color); font-weight: 600; }
+        .method-get { color: var(--success-color); font-weight: 600; }
+        .method-post { color: var(--primary-color); font-weight: 600; }
+        .endpoint-test-btn { padding: 0.25rem 0.5rem; font-size: 0.75rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); cursor: pointer; }
+        .endpoint-test-btn:hover { background: var(--border-color); }
+        .endpoint-test-result { margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-color); border-radius: 4px; font-size: 0.75rem; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+        .swagger-link { display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; text-decoration: none; border-radius: var(--radius); font-weight: 600; }
+        .swagger-link:hover { opacity: 0.9; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-right">
+                <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Theme">🌙</button>
+                <a id="admin-link" href="monitor.html" class="admin-link" title="Admin">🔧</a>
+            </div>
+            <h1>📊 System Monitor</h1>
+            <p class="subtitle">Health, job DB, endpoints – password protected</p>
+            <p class="subtitle-brand">~ Job Search API (Railway)</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">Core API</a>
+                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link">JobSpy</a>
+                <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
+                <a href="interview-prep.html" class="nav-link">Interview Prep</a>
+            </nav>
+        </header>
+
+        <div id="monitor-gate" class="card monitor-gate">
+            <h2>Enter monitor key</h2>
+            <p class="description">Set <code>MONITOR_SECRET</code> on Railway; use the same value here.</p>
+            <input type="password" id="monitor-key-input" placeholder="Monitor secret" autocomplete="off">
+            <button type="button" id="monitor-key-btn">Load dashboard</button>
+            <p id="monitor-gate-error" class="error hidden"></p>
+        </div>
+
+        <div id="monitor-dashboard" class="monitor-dashboard">
+            <div class="monitor-refresh">
+                <button type="button" id="monitor-refresh-btn" class="btn btn-primary">Refresh</button>
+                <span id="monitor-timestamp" class="monitor-timestamp"></span>
+            </div>
+            <div class="card">
+                <h2>Checks</h2>
+                <table class="monitor-table">
+                    <thead>
+                        <tr>
+                            <th>Check</th>
+                            <th>Status</th>
+                            <th>Latency</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monitor-tbody"></tbody>
+                </table>
+            </div>
+            <div class="card monitor-endpoints">
+                <h2>API endpoints</h2>
+                <p class="description" style="margin-bottom: 0.75rem;">Main routes. Use <strong>Test</strong> to call the endpoint; result appears below the table. For full Swagger-style docs, open the link below.</p>
+                <table class="monitor-endpoints-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th>Description</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="monitor-endpoints-tbody"></tbody>
+                </table>
+                <div id="monitor-test-result" class="endpoint-test-result hidden"></div>
+                <a href="/docs" target="_blank" rel="noopener noreferrer" class="swagger-link">Open Swagger UI (full API docs) →</a>
+            </div>
+        </div>
+
+        <footer class="page-footer">
+            <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
+        </footer>
+    </div>
+
+    <script src="theme.js" defer></script>
+    <script src="analytics.js" defer></script>
+    <script>
+        if (typeof initAnalyticsTracking === 'function') {
+            initAnalyticsTracking({ site: 'railway-ui', baseEvent: 'monitor', endpoint: 'https://events.colab.indevs.in/api/events' });
+        }
+    </script>
+    <script>
+        (function () {
+            var STORAGE_KEY = "job_search_monitor_key";
+            var gate = document.getElementById("monitor-gate");
+            var dashboard = document.getElementById("monitor-dashboard");
+            var keyInput = document.getElementById("monitor-key-input");
+            var keyBtn = document.getElementById("monitor-key-btn");
+            var gateError = document.getElementById("monitor-gate-error");
+            var refreshBtn = document.getElementById("monitor-refresh-btn");
+            var tbody = document.getElementById("monitor-tbody");
+            var tsEl = document.getElementById("monitor-timestamp");
+            var endpointsTbody = document.getElementById("monitor-endpoints-tbody");
+            var testResultEl = document.getElementById("monitor-test-result");
+
+            function getKey() {
+                var fromInput = keyInput && keyInput.value ? keyInput.value.trim() : "";
+                if (fromInput) return fromInput;
+                var params = new URLSearchParams(window.location.search);
+                var fromUrl = params.get("key") || "";
+                return fromUrl.trim();
+            }
+
+            function showError(msg) {
+                if (gateError) {
+                    gateError.textContent = msg || "";
+                    gateError.classList.toggle("hidden", !msg);
+                }
+            }
+
+            function renderChecks(data) {
+                if (!data || !data.checks || !tbody) return;
+                tbody.innerHTML = "";
+                data.checks.forEach(function (c) {
+                    var tr = document.createElement("tr");
+                    var statusClass = (c.status || "").toLowerCase() === "up" ? "status-up" : "status-down";
+                    var latency = c.latency_ms != null ? c.latency_ms + " ms" : "—";
+                    var detail = "";
+                    if (c.detail && typeof c.detail === "object") {
+                        detail = "<pre>" + escapeHtml(JSON.stringify(c.detail, null, 2)) + "</pre>";
+                    } else if (c.error) {
+                        detail = "<span class=\"status-down\">" + escapeHtml(c.error) + "</span>";
+                    } else if (c.status_code != null) {
+                        detail = "HTTP " + c.status_code;
+                    }
+                    tr.innerHTML =
+                        "<td>" + escapeHtml(c.name || "—") + "</td>" +
+                        "<td><span class=\"" + statusClass + "\">" + escapeHtml(c.status || "—") + "</span></td>" +
+                        "<td>" + latency + "</td>" +
+                        "<td class=\"monitor-detail\">" + detail + "</td>";
+                    tbody.appendChild(tr);
+                });
+                if (tsEl) tsEl.textContent = "Last updated: " + (data.timestamp || "");
+            }
+
+            function renderEndpoints(data) {
+                if (!data || !data.endpoints || !endpointsTbody) return;
+                endpointsTbody.innerHTML = "";
+                data.endpoints.forEach(function (ep) {
+                    var tr = document.createElement("tr");
+                    var method = (ep.method || "GET").toUpperCase();
+                    var methodClass = method === "GET" ? "method-get" : method === "POST" ? "method-post" : "";
+                    var path = ep.path || "";
+                    var summary = ep.summary || path;
+                    var testBtn = document.createElement("button");
+                    testBtn.className = "endpoint-test-btn";
+                    testBtn.textContent = "Test";
+                    testBtn.setAttribute("data-method", method);
+                    testBtn.setAttribute("data-path", path);
+                    testBtn.type = "button";
+                    tr.innerHTML =
+                        "<td><span class=\"" + methodClass + "\">" + escapeHtml(method) + "</span></td>" +
+                        "<td><code>" + escapeHtml(path) + "</code></td>" +
+                        "<td>" + escapeHtml(summary) + "</td>" +
+                        "<td></td>";
+                    tr.querySelector("td:last-child").appendChild(testBtn);
+                    endpointsTbody.appendChild(tr);
+                });
+            }
+
+            function runEndpointTest(method, path) {
+                if (!testResultEl) return;
+                testResultEl.classList.remove("hidden");
+                testResultEl.textContent = "Calling " + method + " " + path + "…";
+                var url = window.location.origin + path;
+                var opts = { method: method, headers: {} };
+                if (path.indexOf("/api/monitor") !== -1) {
+                    var key = getKey();
+                    if (key) url += (path.indexOf("?") !== -1 ? "&" : "?") + "key=" + encodeURIComponent(key);
+                }
+                fetch(url, opts)
+                    .then(function (r) {
+                        return r.text().then(function (text) {
+                            var status = r.status + " " + r.statusText;
+                            var body = text;
+                            try { body = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+                            testResultEl.textContent = status + "\n\n" + body;
+                        });
+                    })
+                    .catch(function (err) {
+                        testResultEl.textContent = "Error: " + (err.message || "Request failed");
+                    });
+            }
+
+            function escapeHtml(s) {
+                if (s == null) return "";
+                var div = document.createElement("div");
+                div.textContent = s;
+                return div.innerHTML;
+            }
+
+            function fetchDashboard() {
+                var key = getKey();
+                if (!key) {
+                    showError("Enter the monitor key.");
+                    return;
+                }
+                showError("");
+                keyBtn.disabled = true;
+                keyBtn.textContent = "Loading…";
+                fetch("/api/monitor?key=" + encodeURIComponent(key))
+                    .then(function (r) {
+                        if (r.status === 401) {
+                            showError("Invalid key.");
+                            return null;
+                        }
+                        if (r.status === 503) {
+                            showError("Monitor not configured (MONITOR_SECRET missing on server).");
+                            return null;
+                        }
+                        if (!r.ok) {
+                            showError("Error " + r.status);
+                            return null;
+                        }
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        keyBtn.disabled = false;
+                        keyBtn.textContent = "Load dashboard";
+                        if (data && data.ok) {
+                            try { localStorage.setItem(STORAGE_KEY, key); } catch (e) {}
+                            gate.style.display = "none";
+                            dashboard.classList.add("visible");
+                            renderChecks(data);
+                            renderEndpoints(data);
+                        }
+                    })
+                    .catch(function (err) {
+                        keyBtn.disabled = false;
+                        keyBtn.textContent = "Load dashboard";
+                        showError(err.message || "Network error.");
+                    });
+            }
+
+            function refreshDashboard() {
+                var key = getKey();
+                if (!key) {
+                    try { key = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+                    if (keyInput) keyInput.value = key || "";
+                }
+                if (!key) return;
+                refreshBtn.disabled = true;
+                fetch("/api/monitor?key=" + encodeURIComponent(key))
+                    .then(function (r) { return r.status === 200 ? r.json() : null; })
+                    .then(function (data) {
+                        refreshBtn.disabled = false;
+                        if (data && data.ok) renderChecks(data);
+                    })
+                    .catch(function () { refreshBtn.disabled = false; });
+            }
+
+            if (keyBtn) keyBtn.addEventListener("click", fetchDashboard);
+            keyInput.addEventListener("keydown", function (e) { if (e.key === "Enter") fetchDashboard(); });
+            if (refreshBtn) refreshBtn.addEventListener("click", refreshDashboard);
+
+            if (endpointsTbody) {
+                endpointsTbody.addEventListener("click", function (e) {
+                    var btn = e.target && e.target.classList && e.target.classList.contains("endpoint-test-btn") ? e.target : null;
+                    if (!btn) return;
+                    var method = btn.getAttribute("data-method");
+                    var path = btn.getAttribute("data-path");
+                    if (method && path) runEndpointTest(method, path);
+                });
+            }
+
+            var urlKey = new URLSearchParams(window.location.search).get("key");
+            if (urlKey) {
+                keyInput.value = urlKey;
+                fetchDashboard();
+            } else {
+                try {
+                    var saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved) keyInput.value = saved;
+                } catch (e) {}
+            }
+        })();
+    </script>
+</body>
+</html>

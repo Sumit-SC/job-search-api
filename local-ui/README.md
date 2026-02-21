@@ -1,28 +1,25 @@
-# Job Search API - Local UI
+# Job Search API — Local UI
 
-A standalone web interface for testing and interacting with the Job Search API locally.
+Web UI for the Job Search API: refresh jobs, search/filter, RSSJobs.app, JobSpy, JobSpy.tech embed, Interview Prep, and a password-protected **Monitor** page (health + API docs + test buttons).
+
+---
 
 ## Features
 
-- **Refresh Database**: Scrape fresh jobs from all sources (RSS + optional headless scrapers)
-- **Search & Filter**: Search through scraped jobs with multiple filters:
-  - Free text query
-  - Days (job age)
-  - Source filter
-  - Years of Experience (YOE) range
-  - Sort by date, relevance, or source
-  - Result limit
-- **Beautiful UI**: Modern, responsive design with job cards
-- **Real-time Status**: Loading states and status messages
+- **Refresh:** Scrape jobs (RSS + optional headless) and save to the API’s store.
+- **Search & filter:** Free text, days, source, YOE, sort, limit.
+- **Pages:** Core API (`index.html`), RSSJobs, JobSpy, JobSpy.tech, Interview Prep.
+- **Monitor:** `/ui/monitor.html` — health checks, endpoint list, Test buttons, link to Swagger UI. Requires `MONITOR_SECRET` set on the server (see main [README](../README.md)).
+- **Theme:** Dark/light toggle (🌙/☀️) and low-profile admin link (🔧/⚙️) to Monitor in the header on all pages.
+
+---
 
 ## Usage
 
-### 1. Start the API Server
-
-Make sure the API server is running on `http://localhost:8000`:
+### 1. Start the API
 
 ```powershell
-cd w:\CodeBase\Resume-Projects\sumit-personal-site\job-search-api
+cd path\to\job-search-api
 .venv\Scripts\Activate.ps1
 $env:JOBS_SCRAPER_DATA_DIR = "data"
 $env:ENABLE_HEADLESS = "1"
@@ -31,63 +28,47 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### 2. Open the UI
 
-Simply open `index.html` in your web browser:
+- **Local:** Open `index.html` in a browser, or go to **http://localhost:8000/ui/** once the API is running.
+- **Railway:** `https://your-app.up.railway.app/ui/`. For Monitor, set `MONITOR_SECRET` in Railway Variables and enter it on the monitor page.
 
-- **Windows**: Double-click `index.html` or right-click → "Open with" → Your browser
-- **Or**: Open your browser and navigate to the file path
+### 3. Monitor page
 
-### 3. Use the Interface
+Open **Monitor** (link in top-right or `/ui/monitor.html`), enter the **monitor secret** (same as `MONITOR_SECRET` on the server), then use the dashboard and the **API endpoints** table to test endpoints. Full API docs: **Open Swagger UI** → `/docs`.
 
-1. **Refresh Database** (left panel):
-   - Enter a search query (e.g., "data analyst")
-   - Set the number of days to look back (default: 3)
-   - Toggle headless scrapers (slower but more comprehensive)
-   - Click "🔄 Refresh Database"
-   - Wait 30-90 seconds for scraping to complete
-
-2. **Search Jobs** (right panel):
-   - Enter search query (optional)
-   - Adjust filters as needed
-   - Click "🔎 Search Jobs"
-   - Results will display in cards below
+---
 
 ## Configuration
 
-To change the API URL (if running on a different port or host), edit `app.js`:
+To use a different API base URL (e.g. another host/port), set it in the relevant JS file (e.g. `app.js`). When served by the FastAPI app at `/ui/`, the UI uses the same origin, so no change is needed for production.
 
-```javascript
-const API_BASE_URL = 'http://localhost:8000'; // Change this
-```
+---
 
-## File Structure
+## File structure
 
 ```
 local-ui/
-├── index.html    # Main HTML structure
-├── styles.css    # Styling
-├── app.js        # JavaScript logic
-└── README.md     # This file
+├── index.html          # Core API (refresh + search)
+├── rssjobs.html        # RSSJobs.app
+├── jobspy.html         # JobSpy
+├── jobspy-tech.html    # JobSpy.tech embed
+├── interview-prep.html # Interview prep + ChatGPT prompt
+├── monitor.html        # Health dashboard + API docs + test buttons
+├── styles.css          # Shared styles (incl. dark theme)
+├── theme.js            # Dark/light toggle + admin link
+├── app.js              # Core API logic
+├── jobspy.js           # JobSpy page logic
+├── interview-prep.js   # Interview prep logic
+├── analytics.js        # Optional analytics
+└── README.md           # This file
 ```
 
-## Notes
-
-- The UI is completely standalone - no build process required
-- All API calls are made directly from the browser
-- CORS is enabled on the API, so cross-origin requests work
-- Jobs are displayed in a responsive grid layout
-- Each job card shows: title, company, location, description preview, source, date, match score, YOE, salary, and other metadata
+---
 
 ## Troubleshooting
 
-**"Failed to fetch" error:**
-- Make sure the API server is running on `http://localhost:8000`
-- Check browser console for detailed error messages
-
-**No jobs found:**
-- Refresh the database first using the "Refresh Database" button
-- Try increasing the "Days" filter
-- Check if the API server has scraped any jobs
-
-**UI looks broken:**
-- Make sure `styles.css` is in the same folder as `index.html`
-- Check browser console for any errors
+| Issue | Check |
+|-------|--------|
+| "Failed to fetch" | API running on the expected host/port (default 8000). CORS is enabled. |
+| No jobs | Run **Refresh** first; increase **Days** or try different filters. |
+| Monitor "Invalid key" | Set `MONITOR_SECRET` in Railway (or your server) and use the same value on the page. |
+| UI or theme broken | Ensure `styles.css` and `theme.js` are loaded; check the browser console. |

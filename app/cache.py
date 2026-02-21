@@ -103,3 +103,18 @@ def rssjobs_cache_key(keywords: str, location: str, limit: int) -> str:
             "limit": limit,
         },
     )
+
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Return current cache entry counts for monitor dashboard."""
+    try:
+        jc = get_jobspy_cache()
+        rc = get_rssjobs_cache()
+        return {
+            "jobspy_entries": len(jc._store),
+            "rssjobs_entries": len(rc._store),
+            "jobspy_ttl_seconds": JOBSPY_CACHE_TTL,
+            "rssjobs_ttl_seconds": RSSJOBS_CACHE_TTL,
+        }
+    except Exception:
+        return {"jobspy_entries": 0, "rssjobs_entries": 0}

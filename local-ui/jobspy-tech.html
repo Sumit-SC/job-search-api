@@ -9,6 +9,10 @@
 <body>
     <div class="container">
         <header>
+            <div class="header-right">
+                <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Theme">🌙</button>
+                <a id="admin-link" href="monitor.html" class="admin-link" title="Admin">🔧</a>
+            </div>
             <h1>🌐 JobSpy.tech</h1>
             <p class="subtitle">Search jobs on JobSpy.tech (external site with Deep Search, skills & experience filters)</p>
             <p class="subtitle-brand">~ hosted Project by mitSu</p>
@@ -76,6 +80,7 @@
         </footer>
     </div>
 
+    <script src="theme.js" defer></script>
     <script src="analytics.js" defer></script>
     <script>
         if (typeof initAnalyticsTracking === 'function') {

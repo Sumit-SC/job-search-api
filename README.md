@@ -1,128 +1,131 @@
-# Jobs Scraper (Railway) – FastAPI + Playwright (planned)
+# Job Search API — FastAPI + Playwright
 
-**What this project is:** The **main Python job scraper** (FastAPI + Playwright): 11+ RSS/HTTP sources and optional headless scrapers (LinkedIn, Indeed, Naukri). Intended for **Railway** or any container host. Not used by the current Vercel + frontend; that uses **playground-serveless** job APIs. See [JOBS-SCRAPER.md](../JOBS-SCRAPER.md) in the base directory.
+Python job scraper service: 11+ RSS/HTTP sources and optional headless scrapers (LinkedIn, Indeed, Naukri). Built for **Railway** or any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).
 
 ---
 
-This is a separate scraper service intended to run on **Railway** (or any container host) where headless browsing works reliably.
+## Contents
 
-## What it does (today)
+- [What it does](#what-it-does)
+- [Run locally](#run-locally)
+- [Deploy to Railway](#deploy-to-railway)
+- [Environment variables](#environment-variables)
+- [Monitor & API docs](#monitor--api-docs)
+- [Roadmap](#roadmap)
 
-- Provides a small API:
-  - `GET /health`
-  - `GET /jobs` (reads from local JSON store)
-  - `POST /refresh` (scrapes and writes jobs to JSON store)
+---
 
-- **RSS/HTTP sources** (fast, stable, always active):
-  - WeWorkRemotely RSS
-  - RemoteOK RSS
-  - Jobscollider RSS
-  - Remotive (API + RSS)
-  - Wellfound RSS (multiple feeds)
-  - Indeed RSS
-  - Remote.co RSS
-  - Jobspresso RSS
-  - Himalayas RSS
-  - Authentic Jobs RSS
+## What it does
 
-- **Playwright headless scrapers** (when `ENABLE_HEADLESS=1`):
-  - LinkedIn Jobs
-  - Indeed (headless browser)
-  - Naukri.com (India)
-  - More portals coming soon (Monster, Glassdoor, Hirist, etc.)
+| Area | Details |
+|------|---------|
+| **API** | `GET /health`, `GET /jobs`, `POST /refresh`, RSS feed, grouped/salary endpoints, system info |
+| **RSS/HTTP** | WeWorkRemotely, RemoteOK, Jobscollider, Remotive, Wellfound, Indeed, Remote.co, Jobspresso, Himalayas, Authentic Jobs |
+| **Headless** (when `ENABLE_HEADLESS=1`) | LinkedIn Jobs, Indeed, Naukri.com; more planned (Monster, Glassdoor, etc.) |
+| **UI** | `/ui/` — Core API, RSSJobs.app, JobSpy, JobSpy.tech embed, Interview Prep; `/ui/monitor.html` — password-protected health & API docs |
 
-## What it will do next
+See **[SOURCES_STATUS.md](SOURCES_STATUS.md)** for board status and **[JOBS-SCRAPER.md](../JOBS-SCRAPER.md)** for how this fits with the rest of the workspace.
 
-- Add more Playwright scrapers for remaining portals (Monster, Foundit, Glassdoor, Hirist, JobsAaj, TimesJobs, Shine, ZipRecruiter, SimplyHired, CareerBuilder, Dice, Adzuna, Jooble, Freshersworld).
-- Store results in a proper DB (Neon/Supabase Postgres) instead of a local JSON file.
-
-See **[SOURCES_STATUS.md](SOURCES_STATUS.md)** for the full list of 17–20 boards, what’s working, and the plan (RSS → headless → tests → UI).
+---
 
 ## Run locally
 
-1. Create a venv and install deps:
-
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+# Windows: .venv\Scripts\Activate.ps1  |  macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-2. Start API:
+Set env (optional): `JOBS_SCRAPER_DATA_DIR=data`, `ENABLE_HEADLESS=1`. Then:
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-3. Refresh and fetch jobs:
+- **UI:** http://localhost:8000/ui/  
+- **Refresh jobs:** `POST /refresh?q=data%20analyst&days=3`  
+- **List jobs:** `GET /jobs?days=3&limit=50`
 
-```bash
-curl -X POST "http://localhost:8000/refresh?q=data%20analyst&days=3"
-curl "http://localhost:8000/jobs?days=3&limit=50"
-```
+---
 
 ## Deploy to Railway
 
-### Step 1: Create Railway Project
-- Go to [Railway.app](https://railway.app) and create a new project
-- Select "Deploy from GitHub repo"
-- Choose `job-search-api` repository
+### 1. Create project
 
-### Step 2: Add Persistent Storage (Optional)
+- [Railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → select `job-search-api`.
 
-**Note:** Railway doesn't have volumes. For persistent storage, use one of these options:
+### 2. Set environment variables
 
-**Option A: Railway Postgres (Recommended)**
-1. In Railway dashboard → "New" → "Database" → "Add Postgres"
-2. Railway automatically sets `DATABASE_URL` environment variable
-3. Update `storage.py` to use Postgres instead of JSON file
-4. Benefits: True persistence, better querying, scales well
+In the Railway dashboard:
 
-**Option B: Railway Redis (For Caching)**
-1. In Railway dashboard → "New" → "Database" → "Add Redis"
-2. Railway automatically sets `REDIS_URL` environment variable
-3. Update `storage.py` to use Redis for caching
-4. Benefits: Fast caching, persists between requests
+1. Open your **project** → select the **service** (your app).
+2. Go to the **Variables** tab.
+3. Click **+ New Variable** (or **Add Variable**) and add each variable below. Use **RAW** mode to paste multiple lines if needed.
 
-**Option C: Use `/refresh` Directly (No Storage)**
-- Call `/refresh` endpoint directly from your UI
-- No database setup needed, but slower (30-45s per request)
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MONITOR_SECRET` | **Yes** (for monitor) | Secret string to access `/ui/monitor.html` and `GET /api/monitor`. Use a long random password; never commit it. |
+| `JOBS_SCRAPER_DATA_DIR` | No | Directory for JSON job store (default `data`). On Railway you can use `/app/data` (ephemeral unless you add a volume). |
+| `ENABLE_HEADLESS` | No | Set to `1` to enable Playwright scrapers (LinkedIn, Indeed, Naukri). Default `1`. Use `0` for RSS-only. |
+| `USE_JOBSPY` | No | Set to `1` to use jobspy library where applicable. Default `0`. |
 
-### Step 3: Environment Variables
-In your Railway service settings, add:
+**Example (minimal for monitor + file storage):**
 
-```
-JOBS_SCRAPER_DATA_DIR=/app/data  # Only needed if using file storage (ephemeral)
-ENABLE_HEADLESS=1
-```
+- `MONITOR_SECRET` = `<your-secret-password>`
+- `JOBS_SCRAPER_DATA_DIR` = `/app/data`
+- `ENABLE_HEADLESS` = `1`
 
-**Note:** If using Postgres or Redis, you don't need `JOBS_SCRAPER_DATA_DIR` - update `storage.py` to use the database instead.
+Railway may auto-inject `PORT`, `RAILWAY_*`; you don’t need to set those.
 
-### Step 4: Deploy
-Railway will auto-detect the Dockerfile and deploy. The start command is already configured in the Dockerfile.
+### 3. Storage (optional)
 
-### Step 5: Test
-Once deployed, test the API. From the repo (local or CI):
+- **File storage (default):** Jobs are stored in `JOBS_SCRAPER_DATA_DIR`. On Railway this is ephemeral unless you attach a volume (if available).
+- **Postgres/Redis:** Add via Railway **New → Database**. You’d then need to point `storage.py` at the DB; currently the app uses file storage.
 
-**PowerShell (Windows):**
-```powershell
-cd job-search-api/scripts
-.\test_railway.ps1 https://your-app.up.railway.app
-```
+### 4. Deploy
 
-**Bash (Linux/macOS):**
-```bash
-cd job-search-api/scripts
-chmod +x test_railway.sh
-./test_railway.sh https://your-app.up.railway.app
-```
+Railway detects the Dockerfile and deploys. Start command is set in the Dockerfile.
 
-**Manual curls:** 
-- Health: `GET /health`
-- System resources: `GET /system`
-- RSS scrapers: `GET /debug`
-- Headless scrapers: `GET /debug/headless` (slow, ~2-5 min)
-- Refresh (RSS only, fast): `POST /refresh?days=3&headless=0`
-- Refresh (with headless): `POST /refresh?days=3`
-- List jobs: `GET /jobs?limit=50`
+### 5. Test
+
+- **Health:** `GET https://your-app.up.railway.app/health`
+- **Jobs:** `GET https://your-app.up.railway.app/jobs?limit=50`
+- **Refresh:** `POST https://your-app.up.railway.app/refresh?days=3&headless=0`
+- **Scripts:** `job-search-api/scripts/test_railway.ps1` (Windows) or `test_railway.sh` (Bash) with your app URL.
+
+---
+
+## Environment variables
+
+Summary (see [Deploy → Set environment variables](#2-set-environment-variables) for how to set them on Railway):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MONITOR_SECRET` | *(none)* | Password for `/ui/monitor.html` and `/api/monitor`. **Set on Railway** so the monitor and API-docs page work. |
+| `JOBS_SCRAPER_DATA_DIR` | `data` | Directory for the JSON job file. |
+| `ENABLE_HEADLESS` | `1` | `1` = enable Playwright scrapers; `0` = RSS only. |
+| `USE_JOBSPY` | `0` | `1` = use jobspy where applicable. |
+
+---
+
+## Monitor & API docs
+
+- **Monitor URL:** `https://your-app.up.railway.app/ui/monitor.html`
+- **Access:** Enter the same value you set for **`MONITOR_SECRET`** (in Railway → Variables). You can also pass it in the URL: `.../monitor.html?key=YOUR_SECRET` (avoid sharing that link).
+- **What it shows:** Health checks, job DB status, endpoint latencies, cache stats, **list of API endpoints** (method, path, description), **Test** button per endpoint (result shown below), and a link to **Swagger UI** (`/docs`) for full API documentation.
+
+If `MONITOR_SECRET` is not set on the server, `GET /api/monitor` returns **503**.
+
+---
+
+## Roadmap
+
+- More Playwright scrapers (Monster, Foundit, Glassdoor, Hirist, etc.).
+- Persist jobs in Postgres/Neon instead of JSON when desired.
+
+---
+
+## License
+
+Same as the parent workspace.

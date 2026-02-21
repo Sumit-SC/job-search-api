@@ -9,6 +9,10 @@
 <body>
     <div class="container">
         <header>
+            <div class="header-right">
+                <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Theme">🌙</button>
+                <a id="admin-link" href="monitor.html" class="admin-link" title="Admin">🔧</a>
+            </div>
             <h1>🎯 Interview Prep</h1>
             <p class="subtitle">Plan your prep and practice with mock questions for the role you're targeting</p>
             <p class="subtitle-brand">~ mitSu</p>
@@ -95,6 +99,7 @@
         </footer>
     </div>
 
+    <script src="theme.js" defer></script>
     <script src="analytics.js" defer></script>
     <script>
         if (typeof initAnalyticsTracking === 'function') {

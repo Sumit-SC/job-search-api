@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ import html
 import httpx
 import feedparser
 from dateutil import parser as dateparser
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +23,11 @@ from .storage import load_jobs, save_jobs
 from .cache import (
     get_jobspy_cache,
     get_rssjobs_cache,
+    get_cache_stats,
     jobspy_cache_key,
     rssjobs_cache_key,
 )
+from . import storage
 
 
 def normalize_datetime(dt: datetime | None) -> datetime | None:
@@ -172,6 +175,163 @@ async def system_resources() -> dict:
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
+
+
+def _gather_system_info() -> dict:
+    """Reusable system info for /api/monitor (same as /system without HTTP)."""
+    try:
+        import psutil
+        data_dir = os.environ.get("JOBS_SCRAPER_DATA_DIR", "data")
+        disk_path = Path(data_dir)
+        if not disk_path.exists():
+            disk_path = Path("/")
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage(str(disk_path))
+        process = psutil.Process()
+        return {
+            "ok": True,
+            "cpu_percent": round(psutil.cpu_percent(interval=0.2), 2),
+            "cpu_cores": psutil.cpu_count(),
+            "memory_total_mb": round(memory.total / (1024 * 1024), 2),
+            "memory_used_mb": round(memory.used / (1024 * 1024), 2),
+            "memory_percent": round(memory.percent, 2),
+            "disk_path": str(disk_path),
+            "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+            "disk_percent": round(disk.percent, 2),
+            "process_rss_mb": round(process.memory_info().rss / (1024 * 1024), 2),
+            "railway_env": os.environ.get("RAILWAY_ENVIRONMENT"),
+            "railway_service": os.environ.get("RAILWAY_SERVICE_NAME"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/monitor")
+async def monitor_dashboard(
+    request: Request,
+    key: Optional[str] = Query(None),
+    x_monitor_key: Optional[str] = Header(None, alias="X-Monitor-Key"),
+) -> JSONResponse:
+    """
+    Protected monitor endpoint: system health, job DB, endpoint latencies, cache stats.
+    Requires MONITOR_SECRET (Railway env var) via query ?key=SECRET or header X-Monitor-Key: SECRET.
+    """
+    secret = os.environ.get("MONITOR_SECRET", "").strip()
+    if not secret:
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "error": "MONITOR_SECRET not configured"},
+        )
+    provided = (key or "").strip() or (x_monitor_key or "").strip()
+    if provided != secret:
+        return JSONResponse(status_code=401, content={"ok": False, "error": "Invalid key"})
+
+    base_url = str(request.base_url).rstrip("/")
+    checks: List[dict] = []
+    ts = datetime.utcnow().isoformat() + "Z"
+
+    # 1) Health self-ping
+    try:
+        t0 = time.perf_counter()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{base_url}/health")
+        latency_ms = round((time.perf_counter() - t0) * 1000)
+        checks.append({
+            "name": "Health (self)",
+            "status": "up" if r.status_code == 200 else "down",
+            "latency_ms": latency_ms,
+            "status_code": r.status_code,
+            "detail": r.json() if r.status_code == 200 else None,
+        })
+    except Exception as e:
+        checks.append({"name": "Health (self)", "status": "down", "error": str(e)[:200]})
+
+    # 2) System resources
+    try:
+        sys_info = _gather_system_info()
+        checks.append({
+            "name": "System",
+            "status": "up" if sys_info.get("ok") else "down",
+            "detail": sys_info,
+        })
+    except Exception as e:
+        checks.append({"name": "System", "status": "down", "error": str(e)[:200]})
+
+    # 3) Job DB (file store)
+    try:
+        jobs = load_jobs()
+        data_file = storage.DATA_FILE
+        file_size = data_file.stat().st_size if data_file.exists() else 0
+        mtime = datetime.fromtimestamp(data_file.stat().st_mtime, tz=timezone.utc).isoformat() if data_file.exists() else None
+        checks.append({
+            "name": "Job DB",
+            "status": "up",
+            "detail": {
+                "job_count": len(jobs),
+                "file_size_kb": round(file_size / 1024, 2),
+                "file_path": str(data_file),
+                "last_modified": mtime,
+            },
+        })
+    except Exception as e:
+        checks.append({"name": "Job DB", "status": "down", "error": str(e)[:200]})
+
+    # 4) Endpoint latencies: /jobs, /system
+    for path in ["/jobs?limit=1", "/system"]:
+        try:
+            t0 = time.perf_counter()
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(f"{base_url}{path}")
+            latency_ms = round((time.perf_counter() - t0) * 1000)
+            checks.append({
+                "name": f"GET {path.split('?')[0]}",
+                "status": "up" if r.status_code == 200 else "down",
+                "latency_ms": latency_ms,
+                "status_code": r.status_code,
+            })
+        except Exception as e:
+            checks.append({"name": f"GET {path}", "status": "down", "error": str(e)[:200]})
+
+    # 5) Cache stats
+    try:
+        cache_stats = get_cache_stats()
+        checks.append({
+            "name": "Cache (JobSpy / RSSJobs)",
+            "status": "up",
+            "detail": cache_stats,
+        })
+    except Exception as e:
+        checks.append({"name": "Cache", "status": "down", "error": str(e)[:200]})
+
+    # 6) Available API endpoints (for docs + test buttons)
+    endpoints_list: List[dict] = []
+    try:
+        for route in request.app.routes:
+            if not hasattr(route, "path") or not hasattr(route, "methods"):
+                continue
+            path = getattr(route, "path", "") or ""
+            if path.startswith("/ui") or path in ("/openapi.json", "/docs", "/redoc"):
+                continue
+            methods = getattr(route, "methods", set()) or set()
+            summary = getattr(route, "summary", None) or getattr(route, "name", "") or ""
+            for method in sorted(methods):
+                if method == "HEAD":
+                    continue
+                endpoints_list.append({
+                    "method": method,
+                    "path": path,
+                    "summary": summary[:80] if summary else path,
+                })
+        endpoints_list.sort(key=lambda x: (x["path"], x["method"]))
+    except Exception:
+        pass
+
+    return JSONResponse(content={
+        "ok": True,
+        "timestamp": ts,
+        "checks": checks,
+        "endpoints": endpoints_list,
+    })
 
 
 @app.get("/jobs", response_model=JobsResponse)

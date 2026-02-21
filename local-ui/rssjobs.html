@@ -16,6 +16,8 @@
                 <a href="index.html" class="nav-link">Core API</a>
                 <a href="rssjobs.html" class="nav-link nav-link-active">RSSJobs.app</a>
                 <a href="jobspy.html" class="nav-link">JobSpy</a>
+                <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
+                <a href="interview-prep.html" class="nav-link">Interview Prep</a>
             </nav>
         </header>
 
@@ -23,9 +25,7 @@
             <div class="card">
                 <h2>Fetch from rssjobs.app</h2>
                 <p class="description">
-                    Uses backend proxy endpoint <code>GET /rssjobs</code> to fetch RSS feeds from rssjobs.app
-                    (avoids CORS issues). The backend fetches <code>https://rssjobs.app/feeds?keywords=...&amp;location=...</code>
-                    and parses it into job listings.
+                    Uses backend proxy <code>GET /rssjobs</code> (cached 10 min server-side, 5 min in browser). Use “Skip cache” to refresh.
                 </p>
                 <div class="search-controls">
                     <div class="input-row">
@@ -40,6 +40,10 @@
                         <div class="input-group">
                             <label for="rss-max">Max items to show:</label>
                             <input type="number" id="rss-max" min="1" max="200" value="100">
+                        </div>
+                        <div class="input-group">
+                            <label for="rss-skip-cache">Skip cache:</label>
+                            <input type="checkbox" id="rss-skip-cache" title="Bypass server cache">
                         </div>
                     </div>
                     <button id="rss-fetch-btn" class="btn btn-primary">
@@ -64,8 +68,8 @@
         </div>
 
         <footer class="page-footer">
-            <p class="footer-by">Made by Sumit S C (mmitsu)</p>
-            <p class="footer-ack">Acknowledgments: This UI and the Job Search API use open-source repos, RSS feeds, and tools including FastAPI, feedparser, python-jobspy, rssjobs.app, and Cursor. No social links; attribution only.</p>
+            <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
+            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank" rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy" target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app" target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com" target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a href="https://events.colab.indevs.in" target="_blank" rel="noopener noreferrer">events.colab.indevs.in</a>.</p>
         </footer>
     </div>
 

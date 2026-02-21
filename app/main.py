@@ -13,11 +13,18 @@ import feedparser
 from dateutil import parser as dateparser
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
 from .scraper import scrape_all
 from .storage import load_jobs, save_jobs
+from .cache import (
+    get_jobspy_cache,
+    get_rssjobs_cache,
+    jobspy_cache_key,
+    rssjobs_cache_key,
+)
 
 
 def normalize_datetime(dt: datetime | None) -> datetime | None:
@@ -490,29 +497,61 @@ async def refresh_jobs(
     return response
 
 
+def _jobs_response_headers(cache_hit: bool, max_age: int = 900) -> dict:
+    """Cache-Control and X-Cache headers for job list responses."""
+    return {
+        "X-Cache": "HIT" if cache_hit else "MISS",
+        "Cache-Control": f"private, max-age={max_age}",
+    }
+
+
 @app.get("/jobspy", response_model=JobsResponse)
 async def jobspy_jobs(
     q: Optional[str] = Query(None, description="Search term for jobspy-backed boards"),
     location: Optional[str] = Query(None, description="Location string passed to jobspy (city, country, etc.)"),
     days: int = Query(3, ge=1, le=30, description="Max age of jobs in days (converted to hours_old for jobspy)"),
     limit: int = Query(100, ge=1, le=400, description="Max results per response"),
-    sites: Optional[str] = Query(None, description="Comma-separated site names (e.g. indeed,linkedin,glassdoor)"),
+    sites: Optional[str] = Query(None, description="Comma-separated site names (e.g. indeed,linkedin,glassdoor,naukri)"),
     preset: Optional[str] = Query(None, description="Preset: popular, remote, or all"),
-) -> JobsResponse:
+    country: Optional[str] = Query("usa", description="Country for Indeed/Glassdoor (usa, india, uk, etc.)"),
+    is_remote: bool = Query(False, description="Filter for remote-only jobs"),
+    skip_cache: bool = Query(False, description="If true, bypass server cache and re-scrape"),
+) -> Response:
     """
     Fetch jobs from python-jobspy. Use sites= or preset= (popular, remote, all) to choose boards.
+    Supported sites: indeed, linkedin, zip_recruiter, glassdoor, google, bayt, naukri, bdjobs.
+    Responses are cached server-side for 15 minutes; use skip_cache=true to force a fresh scrape.
     """
     try:
         from .jobspy_integration import scrape_jobspy_sources
     except ImportError:
-        return JobsResponse(ok=False, count=0, jobs=[], error="python-jobspy is not installed")
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "count": 0, "jobs": [], "error": "python-jobspy is not installed"},
+            headers=_jobs_response_headers(False),
+        )
+
+    key = jobspy_cache_key(q, location, days, limit, sites, preset, country or "usa", is_remote)
+    cache = get_jobspy_cache()
+    if not skip_cache:
+        cached = cache.get(key)
+        if cached is not None:
+            return JSONResponse(
+                content=cached,
+                headers=_jobs_response_headers(True),
+            )
 
     site_list = [x.strip() for x in sites.split(",")] if sites and sites.strip() else None
     jobs = await scrape_jobspy_sources(
         days=days, query=q, location=location, results_wanted=limit,
         site_name=site_list, preset=preset,
+        country_indeed=(country or "usa").strip().lower(),
+        is_remote=is_remote,
     )
-    return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+    payload = response.model_dump(mode="json")
+    cache.set(key, payload)
+    return JSONResponse(content=payload, headers=_jobs_response_headers(False))
 
 
 @app.get("/rssjobs", response_model=JobsResponse)
@@ -520,32 +559,48 @@ async def rssjobs_proxy(
     keywords: str = Query(..., description="Job keywords/role (e.g., 'data analyst')"),
     location: str = Query("remote", description="Location (e.g., 'remote', 'pune', 'india')"),
     limit: int = Query(100, ge=1, le=400, description="Max results per response"),
-) -> JobsResponse:
+    skip_cache: bool = Query(False, description="If true, bypass server cache"),
+) -> Response:
     """
     Proxy endpoint for rssjobs.app feeds. Fetches RSS feed server-side (no CORS issues)
-    and parses it into our Job model format.
+    and parses it into our Job model format. Cached 10 minutes; use skip_cache=true to refresh.
     """
+    key = rssjobs_cache_key(keywords, location, limit)
+    cache = get_rssjobs_cache()
+    if not skip_cache:
+        cached = cache.get(key)
+        if cached is not None:
+            return JSONResponse(content=cached, headers=_jobs_response_headers(True, max_age=600))
+
     try:
         feed_url = f"https://rssjobs.app/feeds?keywords={keywords}&location={location}"
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(feed_url)
             response.raise_for_status()
             xml_content = response.text
-        
+
         if not xml_content:
-            return JobsResponse(ok=False, count=0, jobs=[], error="Empty response from rssjobs.app")
-        
+            return JSONResponse(
+                status_code=200,
+                content={"ok": False, "count": 0, "jobs": [], "error": "Empty response from rssjobs.app"},
+                headers=_jobs_response_headers(False),
+            )
+
         # Parse RSS feed
         feed = feedparser.parse(xml_content)
-        
+
         if feed.bozo and feed.bozo_exception:
             logger.warning(f"RSS parse error for rssjobs.app: {feed.bozo_exception}")
-            return JobsResponse(ok=False, count=0, jobs=[], error=f"RSS parse error: {feed.bozo_exception}")
-        
+            return JSONResponse(
+                status_code=200,
+                content={"ok": False, "count": 0, "jobs": [], "error": f"RSS parse error: {feed.bozo_exception}"},
+                headers=_jobs_response_headers(False),
+            )
+
         jobs: List[Job] = []
         cutoff_date = datetime.utcnow() - timedelta(days=30)  # Max 30 days old
-        
+
         for entry in feed.entries[:limit]:
             try:
                 title = getattr(entry, "title", "") or ""
@@ -607,16 +662,31 @@ async def rssjobs_proxy(
             except Exception as e:
                 logger.warning(f"Error processing rssjobs.app entry: {e}")
                 continue
-        
-        return JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+
+        response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+        payload = response.model_dump(mode="json")
+        cache.set(key, payload)
+        return JSONResponse(content=payload, headers=_jobs_response_headers(False, max_age=600))
     
     except httpx.TimeoutException:
-        return JobsResponse(ok=False, count=0, jobs=[], error="Timeout fetching rssjobs.app feed")
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "count": 0, "jobs": [], "error": "Timeout fetching rssjobs.app feed"},
+            headers=_jobs_response_headers(False),
+        )
     except httpx.HTTPStatusError as e:
-        return JobsResponse(ok=False, count=0, jobs=[], error=f"HTTP error from rssjobs.app: {e.response.status_code}")
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "count": 0, "jobs": [], "error": f"HTTP error from rssjobs.app: {e.response.status_code}"},
+            headers=_jobs_response_headers(False),
+        )
     except Exception as e:
         logger.error(f"Error fetching rssjobs.app feed: {e}", exc_info=True)
-        return JobsResponse(ok=False, count=0, jobs=[], error=f"Error: {str(e)}")
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "count": 0, "jobs": [], "error": f"Error: {str(e)}"},
+            headers=_jobs_response_headers(False),
+        )
 
 
 @app.get("/debug")

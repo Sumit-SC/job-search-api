@@ -9,26 +9,52 @@ function getJobspyApiBase() {
 }
 const JOBSPY_API_BASE_URL = getJobspyApiBase();
 
+var JOBSPY_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+var JOBSPY_CACHE_KEY_PREFIX = 'jobspy_';
+
+function jobspyClientCacheKey(params) {
+    return JOBSPY_CACHE_KEY_PREFIX + params.toString();
+}
+
+function getJobspyClientCached(params) {
+    try {
+        var key = jobspyClientCacheKey(params);
+        var raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        var entry = JSON.parse(raw);
+        if (entry.expiresAt && Date.now() > entry.expiresAt) {
+            sessionStorage.removeItem(key);
+            return null;
+        }
+        return entry;
+    } catch (e) {
+        return null;
+    }
+}
+
+function setJobspyClientCache(params, data, xCache) {
+    try {
+        var key = jobspyClientCacheKey(params);
+        sessionStorage.setItem(key, JSON.stringify({
+            data: data,
+            xCache: xCache || null,
+            cachedAt: Date.now(),
+            expiresAt: Date.now() + JOBSPY_CLIENT_CACHE_TTL_MS
+        }));
+    } catch (e) { /* quota or disabled */ }
+}
+
+// python-jobspy supports only these 8 sites
 var JOBSPY_ALL_BOARDS = [
     'indeed', 'linkedin', 'zip_recruiter', 'glassdoor', 'google',
-    'dice', 'simplyhired', 'monster', 'careerbuilder', 'stepstone',
-    'wellfound', 'jobscollider', 'bayt', 'naukri', 'bdjobs', 'internshala',
-    'exa', 'upwork', 'builtin', 'snagajob', 'dribbble',
-    'remoteok', 'remotive', 'weworkremotely', 'jobicy', 'himalayas', 'arbeitnow',
-    'greenhouse', 'lever', 'ashby', 'workable', 'smartrecruiters',
-    'rippling', 'workday', 'recruitee', 'teamtailor', 'bamboohr',
-    'personio', 'jazzhr', 'icims', 'taleo', 'successfactors',
-    'jobvite', 'adp', 'ukg', 'breezyhr', 'comeet', 'pinpoint',
-    'amazon', 'apple', 'microsoft', 'nvidia', 'tiktok', 'uber',
-    'cursor', 'google_careers', 'meta', 'netflix', 'stripe', 'openai',
-    'usajobs', 'adzuna', 'reed', 'jooble', 'careerjet'
+    'bayt', 'naukri', 'bdjobs'
 ];
 
 var JOBSPY_HINTS = {
-    popular: '👉 Popular: Indeed, LinkedIn, Google, Glassdoor, ZipRecruiter. Best for general job hunt.',
-    remote: '👉 Remote: RemoteOK, Remotive, WeWorkRemotely, Jobicy, Himalayas, Arbeitnow, Wellfound, Jobscollider. Use for remote-only roles.',
-    all: '👉 All 65+ boards: job boards, remote boards, ATS (Greenhouse, Lever), company pages (Amazon, Google), aggregators. Slower but widest coverage.',
-    manual: '👉 Select one or more boards above. Then click Fetch.'
+    popular: 'Popular: Indeed, LinkedIn, ZipRecruiter, Google, Glassdoor.',
+    remote: 'Same boards with remote-friendly search. Use location Remote or tick Remote only.',
+    all: 'All 8 supported boards: Indeed, LinkedIn, ZipRecruiter, Glassdoor, Google, Bayt, Naukri, BDJobs.',
+    manual: 'Select one or more boards above, then click Fetch.'
 };
 
 const jobspyFetchBtn = document.getElementById('jobspy-fetch-btn');
@@ -82,10 +108,16 @@ async function fetchViaJobSpy() {
     var days = parseInt(document.getElementById('jobspy-days').value, 10) || 3;
     var limit = parseInt(document.getElementById('jobspy-limit').value, 10) || 100;
     var preset = (jobspyPreset && jobspyPreset.value) || 'popular';
+    var countryEl = document.getElementById('jobspy-country');
+    var country = (countryEl && countryEl.value) ? countryEl.value : 'usa';
+    var remoteOnly = document.getElementById('jobspy-remote-only');
+    var isRemote = remoteOnly && remoteOnly.checked;
 
     var params = new URLSearchParams({
         days: days.toString(),
         limit: limit.toString(),
+        country: country,
+        is_remote: isRemote.toString(),
     });
     if (query) params.set('q', query);
     if (location) params.set('location', location);
@@ -99,6 +131,21 @@ async function fetchViaJobSpy() {
     }
     if (preset !== 'manual' || !params.has('sites')) params.set('preset', preset);
 
+    var skipCache = document.getElementById('jobspy-skip-cache');
+    if (skipCache && skipCache.checked) params.set('skip_cache', 'true');
+
+    var clientCached = !params.has('skip_cache') ? getJobspyClientCached(params) : null;
+    if (clientCached && clientCached.data && Array.isArray(clientCached.data.jobs) && clientCached.data.jobs.length > 0) {
+        var jobs = clientCached.data.jobs;
+        var mins = Math.round((Date.now() - clientCached.cachedAt) / 60000);
+        jobspyStatus.className = 'status-message info show';
+        jobspyStatus.textContent = '📦 Showing cached results (' + mins + ' min ago). Click Fetch again to refresh.';
+        if (clientCached.xCache === 'HIT') jobspyStatus.textContent += ' (server cache hit)';
+        jobspyResultsCount.textContent = jobs.length + ' jobs';
+        jobspyJobsContainer.innerHTML = jobs.map(renderJobSpyCard).join('');
+        return;
+    }
+
     jobspyFetchBtn.disabled = true;
     jobspyFetchBtn.querySelector('.btn-text').style.display = 'none';
     jobspyFetchBtn.querySelector('.btn-loader').style.display = 'inline';
@@ -110,13 +157,25 @@ async function fetchViaJobSpy() {
 
     try {
         var response = await fetch(JOBSPY_API_BASE_URL + '/jobspy?' + params.toString());
-        var data = await response.json();
+        var xCache = response.headers.get('X-Cache') || null;
+        var data;
+        try {
+            data = await response.json();
+        } catch (parseErr) {
+            throw new Error('Invalid JSON from server. Try again.');
+        }
+
+        if (!response.ok) {
+            throw new Error(data && data.error ? data.error : 'HTTP ' + response.status);
+        }
 
         if (!data.ok) {
             throw new Error(data.error || 'JobSpy backend returned ok=false');
         }
 
         var jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        setJobspyClientCache(params, data, xCache);
+
         if (!jobs.length) {
             jobspyStatus.className = 'status-message info show';
             jobspyStatus.textContent = 'ℹ️ JobSpy returned 0 jobs. Try widening query, location, or days.';
@@ -127,15 +186,18 @@ async function fetchViaJobSpy() {
 
         jobspyStatus.className = 'status-message success show';
         jobspyStatus.textContent = '✅ JobSpy returned ' + jobs.length + ' jobs';
+        if (xCache === 'HIT') jobspyStatus.textContent += ' (from server cache)';
         jobspyResultsCount.textContent = jobs.length + ' jobs from JobSpy';
 
         jobspyJobsContainer.innerHTML = jobs.map(renderJobSpyCard).join('');
     } catch (error) {
         jobspyStatus.className = 'status-message error show';
-        jobspyStatus.textContent = '❌ Error calling /jobspy: ' + error.message;
-        jobspyJobsContainer.innerHTML = '<div class="empty-state"><p>❌ Failed to fetch from /jobspy. Check that the API server is running and python-jobspy is installed.</p></div>';
+        jobspyStatus.textContent = '❌ Error: ' + error.message;
+        jobspyJobsContainer.innerHTML = '<div class="empty-state"><p>❌ ' + (error.message || 'Failed to fetch.') + '</p><p><button type="button" class="btn btn-primary" id="jobspy-retry-btn">Retry</button></p></div>';
         jobspyResultsCount.textContent = '';
         console.error('JobSpy UI error:', error);
+        var retryBtn = document.getElementById('jobspy-retry-btn');
+        if (retryBtn) retryBtn.addEventListener('click', fetchViaJobSpy);
     } finally {
         jobspyFetchBtn.disabled = false;
         jobspyFetchBtn.querySelector('.btn-text').style.display = 'inline';
@@ -169,6 +231,7 @@ function renderJobSpyCard(job) {
                 <span class="job-meta-item job-source">${escapeHtml(job.source || 'jobspy')}</span>
                 <span class="job-meta-item job-date">📅 ${date}</span>
                 ${salary ? `<span class="job-meta-item">💰 ${salary}</span>` : ''}
+                <a href="interview-prep.html?role=${encodeURIComponent(job.title || '')}&company=${encodeURIComponent(job.company || '')}" class="job-meta-item job-prep-link" title="Open interview prep for this role">🎯 Prep</a>
             </div>
         </div>
     `;

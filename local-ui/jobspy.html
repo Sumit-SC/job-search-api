@@ -16,6 +16,8 @@
                 <a href="index.html" class="nav-link">Core API</a>
                 <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
                 <a href="jobspy.html" class="nav-link nav-link-active">JobSpy</a>
+                <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
+                <a href="interview-prep.html" class="nav-link">Interview Prep</a>
             </nav>
         </header>
 
@@ -23,7 +25,7 @@
             <div class="card">
                 <h2>Fetch via JobSpy backend</h2>
                 <p class="description">
-                    Scrape 65+ job boards via <code>GET /jobspy</code>. Choose a preset (Popular, Remote, All) or pick boards manually.
+                    Scrape 8 job boards via <code>GET /jobspy</code>. Results are cached (server 15 min, browser 5 min). Use “Skip cache” to force a fresh scrape.
                 </p>
                 <div class="search-controls">
                     <div class="input-row">
@@ -31,8 +33,8 @@
                             <label for="jobspy-preset">Boards preset:</label>
                             <select id="jobspy-preset" class="input-select">
                                 <option value="popular" selected>Popular (Indeed, LinkedIn, Google, Glassdoor, ZipRecruiter)</option>
-                                <option value="remote">Remote (RemoteOK, Remotive, WeWorkRemotely, Jobicy, Himalayas, etc.)</option>
-                                <option value="all">All (65+ boards)</option>
+                                <option value="remote">Remote (same boards, remote-friendly)</option>
+                                <option value="all">All 8 boards (Indeed, LinkedIn, ZipRecruiter, Glassdoor, Google, Bayt, Naukri, BDJobs)</option>
                                 <option value="manual">Manual – select boards below</option>
                             </select>
                         </div>
@@ -52,12 +54,31 @@
                             <label for="jobspy-limit">Limit:</label>
                             <input type="number" id="jobspy-limit" min="1" max="400" value="100">
                         </div>
+                        <div class="input-group">
+                            <label for="jobspy-country">Country:</label>
+                            <select id="jobspy-country" class="input-select">
+                                <option value="usa" selected>USA</option>
+                                <option value="india">India</option>
+                                <option value="uk">UK</option>
+                                <option value="canada">Canada</option>
+                                <option value="australia">Australia</option>
+                                <option value="germany">Germany</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="jobspy-remote-only">Remote only:</label>
+                            <input type="checkbox" id="jobspy-remote-only" title="Filter for remote jobs">
+                        </div>
+                        <div class="input-group">
+                            <label for="jobspy-skip-cache">Skip cache:</label>
+                            <input type="checkbox" id="jobspy-skip-cache" title="Bypass server cache and re-scrape">
+                        </div>
                     </div>
                     <div id="jobspy-manual-boards-wrap" class="input-row" style="display: none;">
                         <div class="input-group" style="flex: 1;">
                             <label>Select boards (manual mode):</label>
                             <div id="jobspy-manual-boards" class="jobspy-boards-multiselect"></div>
-                            <small class="input-hint">Select one or more. Popular: indeed, linkedin, glassdoor, zip_recruiter, google. Remote: remoteok, remotive, weworkremotely.</small>
+                            <small class="input-hint">Supported: indeed, linkedin, glassdoor, zip_recruiter, google, bayt, naukri, bdjobs.</small>
                         </div>
                     </div>
                     <p id="jobspy-next-hint" class="jobspy-hint"></p>
@@ -83,8 +104,8 @@
         </div>
 
         <footer class="page-footer">
-            <p class="footer-by">Made with ❤️ & 🧑‍💻Sumit S C (mitSu)</p>
-            <p class="footer-ack">Acknowledgments: This UI and the Job Search API use open-source repos, RSS feeds, and tools including FastAPI, feedparser, python-jobspy, rssjobs.app, and Cursor. No social links; attribution only.</p>
+            <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
+            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank" rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy" target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app" target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com" target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a href="https://events.colab.indevs.in" target="_blank" rel="noopener noreferrer">events.colab.indevs.in</a>.</p>
         </footer>
     </div>
 

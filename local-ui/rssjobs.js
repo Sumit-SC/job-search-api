@@ -10,6 +10,39 @@ function getRssjobsApiBase() {
 }
 const RSSJOBS_API_BASE_URL = getRssjobsApiBase();
 
+var RSSJOBS_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+var RSSJOBS_CACHE_KEY_PREFIX = 'rssjobs_';
+
+function rssjobsClientCacheKey(params) {
+    return RSSJOBS_CACHE_KEY_PREFIX + params.toString();
+}
+
+function getRssjobsClientCached(params) {
+    try {
+        var raw = sessionStorage.getItem(rssjobsClientCacheKey(params));
+        if (!raw) return null;
+        var entry = JSON.parse(raw);
+        if (entry.expiresAt && Date.now() > entry.expiresAt) {
+            sessionStorage.removeItem(rssjobsClientCacheKey(params));
+            return null;
+        }
+        return entry;
+    } catch (e) {
+        return null;
+    }
+}
+
+function setRssjobsClientCache(params, data, xCache) {
+    try {
+        sessionStorage.setItem(rssjobsClientCacheKey(params), JSON.stringify({
+            data: data,
+            xCache: xCache || null,
+            cachedAt: Date.now(),
+            expiresAt: Date.now() + RSSJOBS_CLIENT_CACHE_TTL_MS,
+        }));
+    } catch (e) { /* quota or disabled */ }
+}
+
 const rssFetchBtn = document.getElementById('rss-fetch-btn');
 const rssStatus = document.getElementById('rss-status');
 const rssJobsContainer = document.getElementById('rss-jobs-container');
@@ -22,33 +55,56 @@ async function fetchFromRssJobs() {
     const location = document.getElementById('rss-location').value.trim() || 'remote';
     const maxItems = parseInt(document.getElementById('rss-max').value) || 100;
 
-    const feedUrl = `https://rssjobs.app/feeds?keywords=${encodeURIComponent(role)}&location=${encodeURIComponent(location)}`;
+    const params = new URLSearchParams({
+        keywords: role,
+        location: location,
+        limit: maxItems.toString(),
+    });
+
+    var skipCache = document.getElementById('rss-skip-cache');
+    if (skipCache && skipCache.checked) params.set('skip_cache', 'true');
+
+    var clientCached = !params.has('skip_cache') ? getRssjobsClientCached(params) : null;
+    if (clientCached && clientCached.data && Array.isArray(clientCached.data.jobs) && clientCached.data.jobs.length > 0) {
+        var jobs = clientCached.data.jobs;
+        var mins = Math.round((Date.now() - clientCached.cachedAt) / 60000);
+        rssStatus.className = 'status-message info show';
+        rssStatus.textContent = '📦 Cached results (' + mins + ' min ago). Click Fetch again to refresh.';
+        if (clientCached.xCache === 'HIT') rssStatus.textContent += ' (server cache hit)';
+        rssResultsCount.textContent = jobs.length + ' jobs from rssjobs.app';
+        rssJobsContainer.innerHTML = jobs.map(renderRssJobCard).join('');
+        return;
+    }
 
     rssFetchBtn.disabled = true;
     rssFetchBtn.querySelector('.btn-text').style.display = 'none';
     rssFetchBtn.querySelector('.btn-loader').style.display = 'inline';
 
     rssStatus.className = 'status-message info show';
-    rssStatus.textContent = `⏳ Fetching from rssjobs.app via backend proxy...`;
+    rssStatus.textContent = '⏳ Fetching from rssjobs.app via backend proxy...';
 
     rssJobsContainer.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Loading RSS feed...</div>';
 
     try {
-        // Use backend proxy endpoint (no CORS issues)
-        const params = new URLSearchParams({
-            keywords: role,
-            location: location,
-            limit: maxItems.toString(),
-        });
-
         const response = await fetch(`${RSSJOBS_API_BASE_URL}/rssjobs?${params}`);
-        const data = await response.json();
+        const xCache = response.headers.get('X-Cache') || null;
+        var data;
+        try {
+            data = await response.json();
+        } catch (parseErr) {
+            throw new Error('Invalid JSON from server. Try again.');
+        }
+
+        if (!response.ok) {
+            throw new Error(data && data.error ? data.error : 'HTTP ' + response.status);
+        }
 
         if (!data.ok) {
             throw new Error(data.error || 'Backend returned ok=false');
         }
 
         const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        setRssjobsClientCache(params, data, xCache);
 
         if (!jobs.length) {
             rssStatus.className = 'status-message info show';
@@ -59,16 +115,18 @@ async function fetchFromRssJobs() {
         }
 
         rssStatus.className = 'status-message success show';
-        rssStatus.textContent = `✅ Fetched ${jobs.length} jobs from rssjobs.app`;
-
+        rssStatus.textContent = '✅ Fetched ' + jobs.length + ' jobs from rssjobs.app';
+        if (xCache === 'HIT') rssStatus.textContent += ' (from server cache)';
         rssJobsContainer.innerHTML = jobs.map(renderRssJobCard).join('');
-        rssResultsCount.textContent = `${jobs.length} jobs from rssjobs.app`;
+        rssResultsCount.textContent = jobs.length + ' jobs from rssjobs.app';
     } catch (error) {
         rssStatus.className = 'status-message error show';
-        rssStatus.textContent = `❌ Error: ${error.message}. Make sure the API server is running on ${RSSJOBS_API_BASE_URL}`;
-        rssJobsContainer.innerHTML = '<div class="empty-state"><p>❌ Failed to fetch from rssjobs.app. Check that the API server is running.</p></div>';
+        rssStatus.textContent = '❌ Error: ' + error.message;
+        rssJobsContainer.innerHTML = '<div class="empty-state"><p>❌ ' + (error.message || 'Failed to fetch.') + '</p><p><button type="button" class="btn btn-primary" id="rss-retry-btn">Retry</button></p></div>';
         rssResultsCount.textContent = '';
         console.error('rssjobs.app fetch error:', error);
+        var retryBtn = document.getElementById('rss-retry-btn');
+        if (retryBtn) retryBtn.addEventListener('click', fetchFromRssJobs);
     } finally {
         rssFetchBtn.disabled = false;
         rssFetchBtn.querySelector('.btn-text').style.display = 'inline';

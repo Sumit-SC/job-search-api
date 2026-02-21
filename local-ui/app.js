@@ -409,6 +409,7 @@ function createJobCard(job) {
                 ${salary ? `<span class="job-meta-item">💰 ${salary}</span>` : ''}
                 ${job.visa_sponsorship ? `<span class="job-meta-item">✈️ Visa Sponsorship</span>` : ''}
                 ${job.job_type ? `<span class="job-meta-item">📋 ${escapeHtml(job.job_type)}</span>` : ''}
+                <a href="interview-prep.html?role=${encodeURIComponent(job.title || '')}&company=${encodeURIComponent(job.company || '')}" class="job-meta-item job-prep-link" title="Interview prep for this role">🎯 Prep</a>
             </div>
         </div>
     `;

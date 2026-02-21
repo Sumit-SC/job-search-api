@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Prep - Planner & Mock Practice</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Interview Prep</h1>
+            <p class="subtitle">Plan your prep and practice with mock questions for the role you're targeting</p>
+            <p class="subtitle-brand">~ mitSu</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">Core API</a>
+                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link">JobSpy</a>
+                <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
+                <a href="interview-prep.html" class="nav-link nav-link-active">Interview Prep</a>
+            </nav>
+        </header>
+
+        <div class="prep-setup card">
+            <h2>Target role</h2>
+            <p class="description">Set the role and company so the planner and mock questions stay relevant. You can also open this page from a job card via "Prep for this".</p>
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="prep-role">Job title / Role</label>
+                    <input type="text" id="prep-role" placeholder="e.g. Data Analyst, Software Engineer" value="">
+                </div>
+                <div class="input-group">
+                    <label for="prep-company">Company (optional)</label>
+                    <input type="text" id="prep-company" placeholder="e.g. Acme Corp" value="">
+                </div>
+                <div class="input-group">
+                    <label for="prep-date">Interview date (optional)</label>
+                    <input type="date" id="prep-date" value="">
+                </div>
+            </div>
+        </div>
+
+        <div class="prep-planner card">
+            <h2>📋 Prep planner</h2>
+            <p class="description">Check off items as you go. Progress is saved in this browser.</p>
+            <ul id="prep-checklist" class="prep-checklist"></ul>
+            <p class="prep-planner-hint" id="prep-days-left"></p>
+        </div>
+
+        <div class="prep-mock card">
+            <h2>🎤 Mock interview</h2>
+            <p class="description">Practice with a random question. Type your answer below, then hit "Next question" for another. Use "Copy AI prompt" to run a full mock in ChatGPT or Claude.</p>
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="prep-category">Question type</label>
+                    <select id="prep-category" class="input-select">
+                        <option value="behavioral">Behavioral</option>
+                        <option value="technical">Technical (role-based)</option>
+                        <option value="company">Company / Fit</option>
+                        <option value="mixed">Mixed (random)</option>
+                    </select>
+                </div>
+                <button type="button" id="prep-next-q" class="btn btn-primary">Next question</button>
+                <button type="button" id="prep-copy-prompt" class="btn btn-secondary">Copy AI prompt</button>
+            </div>
+            <div id="prep-question-card" class="prep-question-card">
+                <div class="prep-question-label">Question</div>
+                <div id="prep-question-text" class="prep-question-text">Click "Next question" to start.</div>
+            </div>
+            <div class="input-group">
+                <label for="prep-answer">Your answer (practice)</label>
+                <textarea id="prep-answer" class="prep-answer" rows="5" placeholder="Type your answer here..."></textarea>
+            </div>
+        </div>
+
+        <div class="prep-ai-prompt card">
+            <h2>💬 Use with ChatGPT / Claude</h2>
+            <p class="description">Copy the prompt below and paste it into ChatGPT or Claude. The AI will act as an interviewer and ask you questions one at a time. Reply in the chat as you would in a real interview.</p>
+            <textarea id="prep-ai-prompt-text" class="prep-ai-prompt-text" rows="6" readonly></textarea>
+            <button type="button" id="prep-copy-ai-prompt" class="btn btn-primary">Copy prompt</button>
+        </div>
+
+        <div class="prep-tips card">
+            <h2>📌 Quick tips for your role</h2>
+            <p class="description">Generic tips by role type. Adjust based on the actual job description.</p>
+            <div id="prep-tips-content" class="prep-tips-content"></div>
+        </div>
+
+        <footer class="page-footer">
+            <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
+        </footer>
+    </div>
+
+    <script src="interview-prep.js"></script>
+</body>
+</html>

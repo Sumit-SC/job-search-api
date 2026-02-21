@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobSpy.tech - External Job Search</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌐 JobSpy.tech</h1>
+            <p class="subtitle">Search jobs on JobSpy.tech (external site with Deep Search, skills & experience filters)</p>
+            <p class="subtitle-brand">~ hosted Project by mitSu</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">Core API</a>
+                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                <a href="jobspy.html" class="nav-link">JobSpy</a>
+                <a href="jobspy-tech.html" class="nav-link nav-link-active">JobSpy.tech</a>
+                <a href="interview-prep.html" class="nav-link">Interview Prep</a>
+            </nav>
+        </header>
+
+        <div class="controls-section">
+            <div class="card">
+                <h2>Open JobSpy.tech</h2>
+                <p class="description">
+                    <a href="https://www.jobspy.tech/jobs" target="_blank" rel="noopener noreferrer">JobSpy.tech</a> is a separate job search app with Deep Search, skills, experience level, and location filters. Use the link below to open it (same or prefilled from your search).
+                </p>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="jtech-query">Query (optional):</label>
+                        <input type="text" id="jtech-query" placeholder="e.g. data analyst" value="">
+                    </div>
+                    <div class="input-group">
+                        <label for="jtech-location">Location (optional):</label>
+                        <input type="text" id="jtech-location" placeholder="e.g. Remote, India" value="">
+                    </div>
+                </div>
+                <p class="jobspy-tech-hint">If JobSpy.tech supports URL params, they will be applied when you click the button. Otherwise you can paste your query/location there.</p>
+                <a id="jtech-open-btn" href="https://www.jobspy.tech/jobs" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: inline-block; margin-top: 0.5rem;">
+                    Open JobSpy.tech in new tab
+                </a>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="card">
+                <h2>Also try</h2>
+                <ul>
+                    <li><strong><a href="jobspy.html">JobSpy (this API)</a></strong> – python-jobspy scrapes Indeed, LinkedIn, Glassdoor, Google, ZipRecruiter, Naukri, Bayt, BDJobs.</li>
+                    <li><strong>JobSpy via MCP</strong> – Use the <a href="http://lobehub.com/mcp/yourorg-jobspy-mcp-server" target="_blank" rel="noopener noreferrer">JobSpy MCP Server</a> in Claude Desktop or Cursor for job search tools (local Python, no API key).</li>
+                </ul>
+            </div>
+        </div>
+
+        <footer class="page-footer">
+            <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
+        </footer>
+    </div>
+
+    <script>
+        (function () {
+            var q = document.getElementById('jtech-query');
+            var loc = document.getElementById('jtech-location');
+            var btn = document.getElementById('jtech-open-btn');
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('q')) q.value = params.get('q');
+            if (params.get('location')) loc.value = params.get('location');
+
+            function buildUrl() {
+                var base = 'https://www.jobspy.tech/jobs';
+                var search = q && q.value.trim();
+                var locationVal = loc && loc.value.trim();
+                if (search || locationVal) {
+                    var p = new URLSearchParams();
+                    if (search) p.set('q', search);
+                    if (locationVal) p.set('location', locationVal);
+                    return base + '?' + p.toString();
+                }
+                return base;
+            }
+            if (btn) {
+                btn.addEventListener('click', function (e) {
+                    btn.href = buildUrl();
+                });
+                btn.href = buildUrl();
+            }
+        })();
+    </script>
+</body>
+</html>

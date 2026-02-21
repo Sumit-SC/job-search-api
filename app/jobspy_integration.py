@@ -9,32 +9,22 @@ from .models import Job
 
 logger = logging.getLogger(__name__)
 
-# Presets for JobSpy site_name (subset of supported boards)
-JOBSPY_PRESET_POPULAR = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]
-JOBSPY_PRESET_REMOTE = [
-    "remoteok", "remotive", "weworkremotely", "jobicy", "himalayas", "arbeitnow",
-    "wellfound", "jobscollider",
-]
-JOBSPY_ALL_BOARDS = sorted([
+# python-jobspy (PyPI) supports only these sites; others cause KeyError in map_str_to_site
+JOBSPY_SUPPORTED_SITES = [
     "indeed", "linkedin", "zip_recruiter", "glassdoor", "google",
-    "dice", "simplyhired", "monster", "careerbuilder", "stepstone",
-    "wellfound", "jobscollider", "bayt", "naukri", "bdjobs", "internshala",
-    "exa", "upwork", "builtin", "snagajob", "dribbble",
-    "remoteok", "remotive", "weworkremotely", "jobicy", "himalayas", "arbeitnow",
-    "greenhouse", "lever", "ashby", "workable", "smartrecruiters",
-    "rippling", "workday", "recruitee", "teamtailor", "bamboohr",
-    "personio", "jazzhr", "icims", "taleo", "successfactors",
-    "jobvite", "adp", "ukg", "breezyhr", "comeet", "pinpoint",
-    "amazon", "apple", "microsoft", "nvidia", "tiktok", "uber",
-    "cursor", "google_careers", "meta", "netflix", "stripe", "openai",
-    "usajobs", "adzuna", "reed", "jooble", "careerjet",
-])
+    "bayt", "naukri", "bdjobs",
+]
+JOBSPY_PRESET_POPULAR = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]
+JOBSPY_PRESET_REMOTE = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]  # same boards, use location=Remote
+JOBSPY_ALL_BOARDS = list(JOBSPY_SUPPORTED_SITES)
 
 
 def resolve_jobspy_sites(sites: Optional[List[str]] = None, preset: Optional[str] = None) -> List[str]:
-    """Resolve site list from explicit sites or preset (popular, remote, all)."""
+    """Resolve site list from explicit sites or preset (popular, remote, all). Only returns supported sites."""
+    supported = set(JOBSPY_SUPPORTED_SITES)
     if sites:
-        return [s.strip().lower() for s in sites if s and s.strip()]
+        resolved = [s.strip().lower() for s in sites if s and s.strip() and s.strip().lower() in supported]
+        return resolved if resolved else list(JOBSPY_PRESET_POPULAR)
     if preset:
         p = preset.strip().lower()
         if p == "popular":
@@ -53,9 +43,13 @@ async def scrape_jobspy_sources(
     results_wanted: int = 50,
     site_name: Optional[List[str]] = None,
     preset: Optional[str] = None,
+    country_indeed: str = "usa",
+    is_remote: bool = False,
 ) -> List[Job]:
     """
-    Use python-jobspy to scrape job boards. site_name or preset (popular, remote, all) selects boards.
+    Use python-jobspy to scrape job boards. site_name or preset selects boards.
+    Scrapes each site separately and merges so one failing site does not block others.
+    country_indeed is required for Indeed/Glassdoor (e.g. usa, india, uk).
     """
     try:
         from jobspy import scrape_jobs as jobspy_scrape_jobs  # type: ignore
@@ -66,31 +60,39 @@ async def scrape_jobspy_sources(
     import asyncio
 
     sites = resolve_jobspy_sites(site_name, preset)
+    hours_old = max(1, days * 24)
+    wanted_per_site = max(10, min(results_wanted // max(1, len(sites)), 100))
 
-    def _run() -> List[Job]:
+    def _scrape_one_site(s: str):
         try:
-            hours_old = max(1, days * 24)
-            wanted = max(10, min(results_wanted, 200))
             df = jobspy_scrape_jobs(
-                site_name=sites,
+                site_name=[s],
                 search_term=query or "",
                 location=location or "",
-                results_wanted=wanted,
+                results_wanted=wanted_per_site,
                 hours_old=hours_old,
                 verbose=0,
+                country_indeed=country_indeed,
+                is_remote=is_remote,
             )
+            return df.to_dict(orient="records") if df is not None and not df.empty else []
         except Exception as e:
-            logger.error(f"jobspy scrape_jobs failed: {e}", exc_info=True)
+            logger.warning(f"jobspy site {s} failed: {e}")
             return []
 
-        try:
-            records = df.to_dict(orient="records")
-        except Exception as e:
-            logger.error(f"jobspy DataFrame to_dict failed: {e}", exc_info=True)
-            return []
+    def _run() -> List[Job]:
+        seen_urls: set = set()
+        all_records: List[dict] = []
+        for s in sites:
+            records = _scrape_one_site(s)
+            for r in records:
+                url = r.get("job_url") or r.get("JOB_URL") or ""
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    all_records.append(r)
 
         jobs: List[Job] = []
-        for r in records:
+        for r in all_records:
             try:
                 title = r.get("title") or r.get("TITLE") or ""
                 company = r.get("company") or r.get("COMPANY") or "Unknown"
@@ -149,7 +151,7 @@ async def scrape_jobspy_sources(
                 logger.warning(f"Failed to adapt jobspy record {r}: {e}")
                 continue
 
-        logger.info(f"jobspy returned {len(jobs)} jobs")
+        logger.info(f"jobspy returned {len(jobs)} jobs from {len(sites)} site(s)")
         return jobs
 
     return await asyncio.to_thread(_run)

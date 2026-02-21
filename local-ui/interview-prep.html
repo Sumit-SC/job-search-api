@@ -74,10 +74,14 @@
         </div>
 
         <div class="prep-ai-prompt card">
-            <h2>💬 Use with ChatGPT / Claude</h2>
-            <p class="description">Copy the prompt below and paste it into ChatGPT or Claude. The AI will act as an interviewer and ask you questions one at a time. Reply in the chat as you would in a real interview.</p>
+            <h2>💬 Use with ChatGPT / Gemini</h2>
+            <p class="description">Optionally paste the job description below so the AI can base questions on it. Then copy the prompt and paste it into ChatGPT or Gemini. The AI will first ask about your background, then run a mock interview (one question at a time).</p>
+            <label for="prep-jd-paste" class="block text-sm font-medium mb-1">Paste job description (optional)</label>
+            <textarea id="prep-jd-paste" class="prep-ai-prompt-text mb-3" rows="3" placeholder="Paste the full or partial JD here to tailor the mock interview…"></textarea>
+            <label for="prep-ai-prompt-text" class="block text-sm font-medium mb-1">Prompt to copy</label>
             <textarea id="prep-ai-prompt-text" class="prep-ai-prompt-text" rows="6" readonly></textarea>
             <button type="button" id="prep-copy-ai-prompt" class="btn btn-primary">Copy prompt</button>
+            <a href="https://chat.openai.com/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="margin-left: 0.5rem;">Open ChatGPT</a>
         </div>
 
         <div class="prep-tips card">
@@ -91,6 +95,12 @@
         </footer>
     </div>
 
+    <script src="analytics.js" defer></script>
+    <script>
+        if (typeof initAnalyticsTracking === 'function') {
+            initAnalyticsTracking({ site: 'railway-ui', baseEvent: 'interview-prep', endpoint: 'https://events.colab.indevs.in/api/events' });
+        }
+    </script>
     <script src="interview-prep.js"></script>
 </body>
 </html>

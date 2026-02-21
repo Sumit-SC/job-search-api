@@ -177,30 +177,45 @@
         if (el) el.textContent = text || 'Click "Next question" to start.';
     }
 
-    function buildAIPrompt(role, company) {
+    function buildAIPrompt(role, company, jdText) {
         var r = role || 'this role';
         var c = company ? (' at ' + company) : '';
-        return 'You are an interviewer. I am preparing for an interview for the position of "' + r + '"' + c + '.\n\n' +
-            'Ask me one question at a time (behavioral, technical, or fit). Wait for my answer, then give brief constructive feedback and ask the next question. Keep it concise. After 5–7 questions, give a short overall prep tip.';
+        var out = 'I am preparing for an interview. Please help me as follows.\n\n' +
+            '**Role:** ' + r + c + '\n\n';
+        if (jdText && jdText.trim()) {
+            out += '**Job description:**\n' + jdText.trim() + '\n\n';
+        }
+        out += '**Instructions for you (the AI):**\n' +
+            '1. First, ask me about my background and relevant experience (e.g. years of experience, key skills, recent roles). Wait for my answer.\n' +
+            '2. Then act as an interviewer. Ask me one interview question at a time (behavioral, technical, or role-specific). ' + (jdText && jdText.trim() ? 'Base each question on the job description above. ' : '') + 'Wait for my answer, give brief constructive feedback, then ask the next question.\n' +
+            '3. After 5–7 questions, give a short overall prep tip. Keep responses concise.\n\n' +
+            'Start by asking about my background.';
+        return out;
     }
 
     function updateAIPromptText() {
         var role = document.getElementById('prep-role') && document.getElementById('prep-role').value.trim();
         var company = document.getElementById('prep-company') && document.getElementById('prep-company').value.trim();
+        var jdEl = document.getElementById('prep-jd-paste');
+        var jdText = jdEl ? jdEl.value.trim() : '';
         var ta = document.getElementById('prep-ai-prompt-text');
-        if (ta) ta.value = buildAIPrompt(role, company);
+        if (ta) ta.value = buildAIPrompt(role, company, jdText);
     }
 
     function copyPrompt(forChat) {
+        var roleEl = document.getElementById('prep-role');
+        var companyEl = document.getElementById('prep-company');
+        var jdEl = document.getElementById('prep-jd-paste');
         var text = forChat
             ? buildAIPrompt(
-                document.getElementById('prep-role') && document.getElementById('prep-role').value.trim(),
-                document.getElementById('prep-company') && document.getElementById('prep-company').value.trim()
+                roleEl && roleEl.value.trim(),
+                companyEl && companyEl.value.trim(),
+                jdEl ? jdEl.value.trim() : ''
             )
             : (document.getElementById('prep-ai-prompt-text') && document.getElementById('prep-ai-prompt-text').value);
         if (!text) return;
         navigator.clipboard.writeText(text).then(function () {
-            alert('Copied to clipboard. Paste into ChatGPT or Claude to start the mock.');
+            alert('Copied. Paste into ChatGPT or Gemini. The AI will ask about your background first, then run the mock.');
         }).catch(function () {
             var ta = document.getElementById('prep-ai-prompt-text');
             if (ta) { ta.select(); document.execCommand('copy'); alert('Copied.'); }
@@ -258,6 +273,8 @@
             saveRole(roleEl && roleEl.value, companyEl.value, dateEl && dateEl.value);
             updateAIPromptText();
         });
+        var jdPasteEl = document.getElementById('prep-jd-paste');
+        if (jdPasteEl) jdPasteEl.addEventListener('input', updateAIPromptText);
         dateEl && dateEl.addEventListener('change', function () {
             saveRole(roleEl && roleEl.value, companyEl && companyEl.value, dateEl.value);
             updateDaysLeft();

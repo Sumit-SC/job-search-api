@@ -802,3 +802,13 @@ header h1 {
     text-decoration: none;
 }
 .job-meta-item.job-prep-link:hover { text-decoration: underline; }
+
+.job-meta-item.job-copy-chatgpt-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--primary-color);
+    font: inherit;
+    text-decoration: none;
+}
+.job-meta-item.job-copy-chatgpt-btn:hover { text-decoration: underline; }

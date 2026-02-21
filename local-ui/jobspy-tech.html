@@ -38,9 +38,26 @@
                     </div>
                 </div>
                 <p class="jobspy-tech-hint">If JobSpy.tech supports URL params, they will be applied when you click the button. Otherwise you can paste your query/location there.</p>
-                <a id="jtech-open-btn" href="https://www.jobspy.tech/jobs" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: inline-block; margin-top: 0.5rem;">
-                    Open JobSpy.tech in new tab
-                </a>
+                <div class="jobspy-tech-actions" style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.75rem;">
+                    <a id="jtech-open-btn" href="https://www.jobspy.tech/jobs" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+                        Open JobSpy.tech in new tab
+                    </a>
+                    <button type="button" id="jtech-embed-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="jtech-embed-content">
+                        Show embedded view
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jtech-embed-section" class="card" style="margin-top: 1rem; display: none;">
+            <h2 style="margin-bottom: 0.5rem;">Embedded JobSpy.tech</h2>
+            <p class="description" style="margin-bottom: 0.75rem; font-size: 0.9rem;">Same results in-page. We cannot hide JobSpy.tech’s header/footer from here (cross-origin). If they add <code>?embed=1</code> support, we can use it to get a minimal view.</p>
+            <div id="jtech-embed-content" class="jtech-embed-wrap" style="position: relative; min-height: 480px; border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; background: #f1f5f9;">
+                <iframe id="jtech-embed-iframe" title="JobSpy.tech jobs" style="width: 100%; height: 640px; border: none;" src="about:blank"></iframe>
+                <div id="jtech-embed-fallback" class="hidden" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; text-align: center; background: #f8fafc;">
+                    <p style="margin-bottom: 0.75rem;">Embed was blocked. Use the button above to open JobSpy.tech in a new tab.</p>
+                    <a id="jtech-embed-open-tab" href="https://www.jobspy.tech/jobs" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Open in new tab</a>
+                </div>
             </div>
         </div>
 
@@ -59,33 +76,76 @@
         </footer>
     </div>
 
+    <script src="analytics.js" defer></script>
+    <script>
+        if (typeof initAnalyticsTracking === 'function') {
+            initAnalyticsTracking({ site: 'railway-ui', baseEvent: 'jobspy-tech', endpoint: 'https://events.colab.indevs.in/api/events' });
+        }
+    </script>
     <script>
         (function () {
             var q = document.getElementById('jtech-query');
             var loc = document.getElementById('jtech-location');
             var btn = document.getElementById('jtech-open-btn');
+            var embedSection = document.getElementById('jtech-embed-section');
+            var embedToggle = document.getElementById('jtech-embed-toggle');
+            var embedContent = document.getElementById('jtech-embed-content');
+            var iframe = document.getElementById('jtech-embed-iframe');
+            var embedFallback = document.getElementById('jtech-embed-fallback');
+            var embedOpenTab = document.getElementById('jtech-embed-open-tab');
             var params = new URLSearchParams(window.location.search);
-            if (params.get('q')) q.value = params.get('q');
-            if (params.get('location')) loc.value = params.get('location');
+            if (params.get('q') && q) q.value = params.get('q');
+            if (params.get('location') && loc) loc.value = params.get('location');
 
-            function buildUrl() {
+            function buildUrl(useEmbedParam) {
                 var base = 'https://www.jobspy.tech/jobs';
                 var search = q && q.value.trim();
                 var locationVal = loc && loc.value.trim();
-                if (search || locationVal) {
-                    var p = new URLSearchParams();
-                    if (search) p.set('q', search);
-                    if (locationVal) p.set('location', locationVal);
-                    return base + '?' + p.toString();
+                var p = new URLSearchParams();
+                if (search) p.set('q', search);
+                if (locationVal) p.set('location', locationVal);
+                if (useEmbedParam) p.set('embed', '1');
+                var queryString = p.toString();
+                return queryString ? base + '?' + queryString : base;
+            }
+
+            function updateUrls() {
+                var u = buildUrl(false);
+                if (btn) btn.href = u;
+                if (embedOpenTab) embedOpenTab.href = u;
+                if (iframe && embedSection && embedSection.style.display !== 'none') {
+                    iframe.src = buildUrl(true);
                 }
-                return base;
             }
+
             if (btn) {
-                btn.addEventListener('click', function (e) {
-                    btn.href = buildUrl();
-                });
-                btn.href = buildUrl();
+                btn.addEventListener('click', function () { btn.href = buildUrl(false); });
+                btn.href = buildUrl(false);
             }
+
+            if (embedToggle && embedSection && iframe) {
+                embedToggle.addEventListener('click', function () {
+                    var isExpanded = embedSection.style.display !== 'none';
+                    if (isExpanded) {
+                        embedSection.style.display = 'none';
+                        embedToggle.setAttribute('aria-expanded', 'false');
+                        embedToggle.textContent = 'Show embedded view';
+                        iframe.src = 'about:blank';
+                    } else {
+                        embedSection.style.display = 'block';
+                        embedToggle.setAttribute('aria-expanded', 'true');
+                        embedToggle.textContent = 'Hide embedded view';
+                        iframe.src = buildUrl(true);
+                    }
+                });
+            }
+
+            if (q) q.addEventListener('input', updateUrls);
+            if (q) q.addEventListener('change', updateUrls);
+            if (loc) loc.addEventListener('input', updateUrls);
+            if (loc) loc.addEventListener('change', updateUrls);
+
+            if (embedOpenTab) embedOpenTab.href = buildUrl(false);
         })();
     </script>
 </body>

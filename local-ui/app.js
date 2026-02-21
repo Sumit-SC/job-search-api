@@ -51,9 +51,25 @@ function updateDateTimeDisplay() {
     }
 }
 
-// Initialize datetime display on page load
+// Initialize datetime display on page load + delegated "Copy for ChatGPT" on job cards
 window.addEventListener('DOMContentLoaded', () => {
     updateDateTimeDisplay();
+    if (jobsContainer) {
+        jobsContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.job-copy-chatgpt-btn');
+            if (!btn || !lastDisplayedJobs.length) return;
+            const idx = parseInt(btn.getAttribute('data-job-index'), 10);
+            if (isNaN(idx) || idx < 0 || idx >= lastDisplayedJobs.length) return;
+            const job = lastDisplayedJobs[idx];
+            const prompt = buildChatGPTPrepPrompt(job);
+            navigator.clipboard.writeText(prompt).then(() => {
+                window.open('https://chat.openai.com/', '_blank', 'noopener');
+                alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
+            }).catch(() => {
+                prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+            });
+        });
+    }
 });
 
 // -----------------------------
@@ -367,16 +383,36 @@ function applyFiltersAndRender() {
     return limited.length;
 }
 
+var lastDisplayedJobs = [];
+
 function displayJobs(jobs) {
     if (jobs.length === 0) {
         jobsContainer.innerHTML = '<div class="empty-state"><p>No jobs found matching your criteria. Try adjusting your filters or refresh the database.</p></div>';
+        lastDisplayedJobs = [];
         return;
     }
-
-    jobsContainer.innerHTML = jobs.map(job => createJobCard(job)).join('');
+    lastDisplayedJobs = jobs;
+    jobsContainer.innerHTML = jobs.map((job, index) => createJobCard(job, index)).join('');
 }
 
-function createJobCard(job) {
+function buildChatGPTPrepPrompt(job) {
+    const role = job.title || 'this role';
+    const company = job.company || '';
+    const location = job.location || '';
+    let desc = String(job.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (desc.length > 8000) desc = desc.slice(0, 8000) + '...';
+    return 'I am preparing for an interview. Please help me as follows.\n\n' +
+        '**Role:** ' + role + (company ? '\n**Company:** ' + company : '') + (location ? '\n**Location:** ' + location : '') + '\n\n' +
+        '**Job description:**\n' + (desc || '(No description provided.)') + '\n\n' +
+        '**Instructions for you (the AI):**\n' +
+        '1. First, ask me about my background and relevant experience (e.g. years of experience, key skills, recent roles). Wait for my answer.\n' +
+        '2. Then, using the job description above, act as an interviewer. Ask me one interview question at a time (behavioral, technical, or role-specific). Base each question on this role and JD.\n' +
+        '3. After each answer, give brief constructive feedback, then ask the next question.\n' +
+        '4. After 5–7 questions, give a short overall prep tip. Keep responses concise.\n\n' +
+        'Start by asking about my background.';
+}
+
+function createJobCard(job, index) {
     const date = job.date ? new Date(job.date).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -386,6 +422,7 @@ function createJobCard(job) {
     const matchScore = job.match_score ? Math.round(job.match_score) : null;
     const yoe = formatYOE(job.yoe_min, job.yoe_max);
     const salary = formatSalary(job.salary_min, job.salary_max, job.currency);
+    const dataIndex = typeof index === 'number' ? index : '';
 
     return `
         <div class="job-card">
@@ -410,6 +447,7 @@ function createJobCard(job) {
                 ${job.visa_sponsorship ? `<span class="job-meta-item">✈️ Visa Sponsorship</span>` : ''}
                 ${job.job_type ? `<span class="job-meta-item">📋 ${escapeHtml(job.job_type)}</span>` : ''}
                 <a href="interview-prep.html?role=${encodeURIComponent(job.title || '')}&company=${encodeURIComponent(job.company || '')}" class="job-meta-item job-prep-link" title="Interview prep for this role">🎯 Prep</a>
+                <button type="button" class="job-meta-item job-copy-chatgpt-btn" data-job-index="${dataIndex}" title="Copy JD + prompt and open ChatGPT/Gemini">📋 Copy for ChatGPT</button>
             </div>
         </div>
     `;

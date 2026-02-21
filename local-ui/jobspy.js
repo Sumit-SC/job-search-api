@@ -177,6 +177,7 @@ async function fetchViaJobSpy() {
         setJobspyClientCache(params, data, xCache);
 
         if (!jobs.length) {
+            window.lastJobspyJobs = [];
             jobspyStatus.className = 'status-message info show';
             jobspyStatus.textContent = 'ℹ️ JobSpy returned 0 jobs. Try widening query, location, or days.';
             jobspyJobsContainer.innerHTML = '<div class="empty-state"><p>No jobs from JobSpy. Try a broader query or location.</p></div>';
@@ -189,7 +190,8 @@ async function fetchViaJobSpy() {
         if (xCache === 'HIT') jobspyStatus.textContent += ' (from server cache)';
         jobspyResultsCount.textContent = jobs.length + ' jobs from JobSpy';
 
-        jobspyJobsContainer.innerHTML = jobs.map(renderJobSpyCard).join('');
+        window.lastJobspyJobs = jobs;
+        jobspyJobsContainer.innerHTML = jobs.map(function (job, i) { return renderJobSpyCard(job, i); }).join('');
     } catch (error) {
         jobspyStatus.className = 'status-message error show';
         jobspyStatus.textContent = '❌ Error: ' + error.message;
@@ -205,7 +207,24 @@ async function fetchViaJobSpy() {
     }
 }
 
-function renderJobSpyCard(job) {
+function buildChatGPTPrepPrompt(job) {
+    var role = job.title || 'this role';
+    var company = job.company || '';
+    var location = job.location || '';
+    var desc = String(job.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (desc.length > 8000) desc = desc.slice(0, 8000) + '...';
+    return 'I am preparing for an interview. Please help me as follows.\n\n' +
+        '**Role:** ' + role + (company ? '\n**Company:** ' + company : '') + (location ? '\n**Location:** ' + location : '') + '\n\n' +
+        '**Job description:**\n' + (desc || '(No description provided.)') + '\n\n' +
+        '**Instructions for you (the AI):**\n' +
+        '1. First, ask me about my background and relevant experience (e.g. years of experience, key skills, recent roles). Wait for my answer.\n' +
+        '2. Then, using the job description above, act as an interviewer. Ask me one interview question at a time (behavioral, technical, or role-specific). Base each question on this role and JD.\n' +
+        '3. After each answer, give brief constructive feedback, then ask the next question.\n' +
+        '4. After 5–7 questions, give a short overall prep tip. Keep responses concise.\n\n' +
+        'Start by asking about my background.';
+}
+
+function renderJobSpyCard(job, index) {
     const date = job.date ? new Date(job.date).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -214,6 +233,7 @@ function renderJobSpyCard(job) {
 
     const salary = formatSalary(job.salary_min, job.salary_max, job.currency);
     const loc = job.location || 'Location not specified';
+    const dataIndex = typeof index === 'number' ? index : '';
 
     return `
         <div class="job-card">
@@ -232,6 +252,7 @@ function renderJobSpyCard(job) {
                 <span class="job-meta-item job-date">📅 ${date}</span>
                 ${salary ? `<span class="job-meta-item">💰 ${salary}</span>` : ''}
                 <a href="interview-prep.html?role=${encodeURIComponent(job.title || '')}&company=${encodeURIComponent(job.company || '')}" class="job-meta-item job-prep-link" title="Open interview prep for this role">🎯 Prep</a>
+                <button type="button" class="job-meta-item job-copy-chatgpt-btn" data-job-index="${dataIndex}" title="Copy JD + prompt and open ChatGPT/Gemini">📋 Copy for ChatGPT</button>
             </div>
         </div>
     `;
@@ -255,5 +276,22 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text || '';
     return div.innerHTML;
+}
+
+if (jobspyJobsContainer) {
+    jobspyJobsContainer.addEventListener('click', function (e) {
+        var btn = e.target.closest('.job-copy-chatgpt-btn');
+        if (!btn || !window.lastJobspyJobs || !window.lastJobspyJobs.length) return;
+        var idx = parseInt(btn.getAttribute('data-job-index'), 10);
+        if (isNaN(idx) || idx < 0 || idx >= window.lastJobspyJobs.length) return;
+        var job = window.lastJobspyJobs[idx];
+        var prompt = buildChatGPTPrepPrompt(job);
+        navigator.clipboard.writeText(prompt).then(function () {
+            window.open('https://chat.openai.com/', '_blank', 'noopener');
+            alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
+        }).catch(function () {
+            window.prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+        });
+    });
 }
 

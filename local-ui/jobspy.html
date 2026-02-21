@@ -88,6 +88,12 @@
         </footer>
     </div>
 
+    <script src="analytics.js" defer></script>
+    <script>
+      if (typeof initAnalyticsTracking === "function") {
+        initAnalyticsTracking({ site: "railway-ui", baseEvent: "jobspy", endpoint: "https://events.colab.indevs.in/api/events" });
+      }
+    </script>
     <script src="jobspy.js"></script>
 </body>
 </html>

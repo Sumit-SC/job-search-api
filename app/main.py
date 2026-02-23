@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import html
 import httpx
@@ -64,7 +65,14 @@ except ImportError:
         return {}
 
 
-app = FastAPI(title="Jobs Scraper API", version="0.1.0")
+app = FastAPI(
+    title="Jobs Scraper API",
+    version="0.1.0",
+    description="REST API for job listings. All documented endpoints return **JSON** (or RSS XML for `/jobs/rss` only). Use `/ui/` for the web UI.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,7 +88,7 @@ if _LOCAL_UI_DIR.exists():
     app.mount("/ui", StaticFiles(directory=str(_LOCAL_UI_DIR), html=True), name="ui")
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root() -> Response:
     """Redirect to the embedded UI so the Railway page loads the local-ui HTML."""
     from fastapi.responses import RedirectResponse
@@ -714,18 +722,38 @@ async def jobspy_jobs(
     return JSONResponse(content=payload, headers=_jobs_response_headers(False))
 
 
+def _is_rssjobs_feed_url(url: str) -> bool:
+    """Allow only rssjobs.app / www.rssjobs.app for feed_url (security)."""
+    try:
+        parsed = urlparse(url.strip())
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.netloc or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        return host == "rssjobs.app"
+    except Exception:
+        return False
+
+
 @app.get("/rssjobs", response_model=JobsResponse)
 async def rssjobs_proxy(
-    keywords: str = Query(..., description="Job keywords/role (e.g., 'data analyst')"),
-    location: str = Query("remote", description="Location (e.g., 'remote', 'pune', 'india')"),
+    keywords: Optional[str] = Query(None, description="Job keywords/role (e.g., 'data analyst'). Ignored if feed_url is set."),
+    location: Optional[str] = Query("remote", description="Location (e.g., 'remote', 'pune'). Ignored if feed_url is set."),
     limit: int = Query(100, ge=1, le=400, description="Max results per response"),
     skip_cache: bool = Query(False, description="If true, bypass server cache"),
+    feed_url: Optional[str] = Query(None, description="Your RSS feed URL from rssjobs.app (create feed there first, then paste URL here)."),
 ) -> Response:
     """
-    Proxy endpoint for rssjobs.app feeds. Fetches RSS feed server-side (no CORS issues)
-    and parses it into our Job model format. Cached 10 minutes; use skip_cache=true to refresh.
+    Proxy endpoint for rssjobs.app feeds. Two modes:
+    1) feed_url set: fetch and parse that RSS feed (create the feed at rssjobs.app first).
+    2) keywords + location: build https://rssjobs.app/feeds?keywords=...&location=... (may fail for some combos).
+    Cached 10 minutes; use skip_cache=true to refresh.
     """
-    key = rssjobs_cache_key(keywords, location, limit)
+    use_custom_feed = feed_url and _is_rssjobs_feed_url(feed_url)
+    kw = (keywords or "").strip() or "data analyst"
+    loc = (location or "").strip() or "remote"
+    key = rssjobs_cache_key(kw, loc, limit, feed_url=feed_url if use_custom_feed else None)
     cache = get_rssjobs_cache()
     if not skip_cache:
         cached = cache.get(key)
@@ -733,10 +761,13 @@ async def rssjobs_proxy(
             return JSONResponse(content=cached, headers=_jobs_response_headers(True, max_age=600))
 
     try:
-        feed_url = f"https://rssjobs.app/feeds?keywords={keywords}&location={location}"
+        if use_custom_feed:
+            fetch_url = feed_url.strip()
+        else:
+            fetch_url = f"https://rssjobs.app/feeds?keywords={kw}&location={loc}"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(feed_url)
+            response = await client.get(fetch_url)
             response.raise_for_status()
             xml_content = response.text
 
@@ -798,7 +829,7 @@ async def rssjobs_proxy(
                 # Extract company/location from title or description if possible
                 # rssjobs.app format: "Title: Company Name" or similar
                 company = "Unknown"
-                location_str = location.title()
+                location_str = loc.title() if not use_custom_feed else "—"
                 
                 # Try to extract company from title (common format: "Job Title at Company")
                 if " at " in title:
@@ -858,6 +889,7 @@ async def debug_scrapers() -> dict:
     from .scraper import (
         scrape_weworkremotely,
         scrape_jobscollider,
+        scrape_jobscollider_data,
         scrape_remoteok,
         scrape_remotive_api,
         scrape_remotive_rss,
@@ -877,6 +909,7 @@ async def debug_scrapers() -> dict:
     scrapers = {
         "weworkremotely": scrape_weworkremotely,
         "jobscollider": scrape_jobscollider,
+        "jobscollider_data": scrape_jobscollider_data,
         "remoteok": scrape_remoteok,
         "remotive_api": scrape_remotive_api,
         "remotive_rss": scrape_remotive_rss,

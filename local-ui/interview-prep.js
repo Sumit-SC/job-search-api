@@ -214,20 +214,111 @@
             )
             : (document.getElementById('prep-ai-prompt-text') && document.getElementById('prep-ai-prompt-text').value);
         if (!text) return;
-        navigator.clipboard.writeText(text).then(function () {
-            alert('Copied. Paste into ChatGPT or Gemini. The AI will ask about your background first, then run the mock.');
-        }).catch(function () {
-            var ta = document.getElementById('prep-ai-prompt-text');
-            if (ta) { ta.select(); document.execCommand('copy'); alert('Copied.'); }
-        });
+        var ta = document.getElementById('prep-ai-prompt-text');
+        if (!forChat && ta) ta.value = text;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+                alert('Copied. Paste into ChatGPT or Gemini. The AI will ask about your background first, then run the mock.');
+            }).catch(function () {
+                if (ta) { ta.value = text; ta.select(); document.execCommand('copy'); }
+                alert('Copied. Paste into ChatGPT or Gemini.');
+            });
+        } else {
+            if (ta) { ta.value = text; ta.select(); document.execCommand('copy'); }
+            alert('Copied. Paste into ChatGPT or Gemini.');
+        }
     }
 
     function renderTips() {
         var role = document.getElementById('prep-role') && document.getElementById('prep-role').value.trim();
         var container = document.getElementById('prep-tips-content');
+        var actionsEl = document.getElementById('prep-tips-actions');
         if (!container) return;
         var tips = getTipsForRole(role);
         container.innerHTML = '<ul class="prep-tips-list">' + tips.map(function (t) { return '<li>' + escapeHtml(t) + '</li>'; }).join('') + '</ul>';
+        if (actionsEl) actionsEl.style.display = tips.length ? 'flex' : 'none';
+    }
+
+    function copyToClipboard(text, fallbackEl, doneCallback) {
+        if (!text || !String(text).trim()) return false;
+        function done() { if (doneCallback) doneCallback(); return true; }
+        function fallbackCopy() {
+            if (fallbackEl) {
+                try { fallbackEl.select(); document.execCommand('copy'); } catch (e) {}
+            } else {
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, String(text).length);
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                } catch (e) {}
+            }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(function () {
+                fallbackCopy();
+                done();
+            });
+            return true;
+        }
+        fallbackCopy();
+        done();
+        return true;
+    }
+
+    function showCopiedFeedback(btn, label) {
+        if (!btn) return;
+        var orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.disabled = true;
+        setTimeout(function () { btn.textContent = orig || label; btn.disabled = false; }, 1500);
+    }
+
+    function sendToChat(text) {
+        if (!copyToClipboard(text)) return;
+        window.open('https://chat.openai.com/', '_blank', 'noopener');
+    }
+
+    function copyQuestion() {
+        var el = document.getElementById('prep-question-text');
+        var text = el ? el.textContent.trim() : '';
+        if (!text || text === 'Click "Next question" to start.') return;
+        var btn = document.getElementById('prep-copy-question');
+        copyToClipboard(text, null, function () { showCopiedFeedback(btn, 'Copy'); });
+    }
+
+    function sendQuestionToChat() {
+        var el = document.getElementById('prep-question-text');
+        var text = el ? el.textContent.trim() : '';
+        if (!text || text === 'Click "Next question" to start.') return;
+        sendToChat('Interview question to practice:\n\n' + text);
+    }
+
+    function getTipsText() {
+        var container = document.getElementById('prep-tips-content');
+        if (!container) return '';
+        var list = container.querySelector('.prep-tips-list');
+        if (!list) return '';
+        return Array.from(list.querySelectorAll('li')).map(function (li) { return li.textContent.trim(); }).filter(Boolean).join('\n• ');
+    }
+
+    function copyTips() {
+        var text = getTipsText();
+        if (!text) return;
+        var btn = document.getElementById('prep-copy-tips');
+        copyToClipboard('Quick tips for your role:\n• ' + text, null, function () { showCopiedFeedback(btn, 'Copy tips'); });
+    }
+
+    function sendTipsToChat() {
+        var text = getTipsText();
+        if (!text) return;
+        sendToChat('Quick tips for my interview prep (please help me expand on these):\n• ' + text);
     }
 
     // --- URL params (e.g. from "Prep for this" on a job card) ---
@@ -298,6 +389,26 @@
         document.getElementById('prep-copy-ai-prompt') && document.getElementById('prep-copy-ai-prompt').addEventListener('click', function () {
             copyPrompt(false);
         });
+
+        document.getElementById('prep-copy-open-chat') && document.getElementById('prep-copy-open-chat').addEventListener('click', function () {
+            var roleEl = document.getElementById('prep-role');
+            var companyEl = document.getElementById('prep-company');
+            var jdEl = document.getElementById('prep-jd-paste');
+            var text = buildAIPrompt(
+                roleEl && roleEl.value.trim(),
+                companyEl && companyEl.value.trim(),
+                jdEl ? jdEl.value.trim() : ''
+            );
+            if (text && copyToClipboard(text, null, function () {})) {
+                window.open('https://chat.openai.com/', '_blank', 'noopener');
+                alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run the mock.');
+            }
+        });
+
+        document.getElementById('prep-copy-question') && document.getElementById('prep-copy-question').addEventListener('click', copyQuestion);
+        document.getElementById('prep-send-question-chat') && document.getElementById('prep-send-question-chat').addEventListener('click', sendQuestionToChat);
+        document.getElementById('prep-copy-tips') && document.getElementById('prep-copy-tips').addEventListener('click', copyTips);
+        document.getElementById('prep-send-tips-chat') && document.getElementById('prep-send-tips-chat').addEventListener('click', sendTipsToChat);
     }
 
     init();

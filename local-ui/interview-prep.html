@@ -9,20 +9,23 @@
 <body>
     <div class="container">
         <header>
+            <div class="header-left" aria-hidden="true"></div>
+            <div class="header-center">
+                <h1>🎯 Interview Prep</h1>
+                <p class="subtitle">Plan your prep and practice with mock questions for the role you're targeting</p>
+                <p class="subtitle-brand">~ mitSu</p>
+                <nav class="top-nav">
+                    <a href="index.html" class="nav-link">Core API</a>
+                    <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
+                    <a href="jobspy.html" class="nav-link">JobSpy</a>
+                    <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
+                    <a href="interview-prep.html" class="nav-link nav-link-active">Interview Prep</a>
+                </nav>
+            </div>
             <div class="header-right">
                 <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Theme">🌙</button>
                 <a id="admin-link" href="monitor.html" class="admin-link" title="Admin">🔧</a>
             </div>
-            <h1>🎯 Interview Prep</h1>
-            <p class="subtitle">Plan your prep and practice with mock questions for the role you're targeting</p>
-            <p class="subtitle-brand">~ mitSu</p>
-            <nav class="top-nav">
-                <a href="index.html" class="nav-link">Core API</a>
-                <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
-                <a href="jobspy.html" class="nav-link">JobSpy</a>
-                <a href="jobspy-tech.html" class="nav-link">JobSpy.tech</a>
-                <a href="interview-prep.html" class="nav-link nav-link-active">Interview Prep</a>
-            </nav>
         </header>
 
         <div class="prep-setup card">
@@ -69,7 +72,11 @@
             </div>
             <div id="prep-question-card" class="prep-question-card">
                 <div class="prep-question-label">Question</div>
-                <div id="prep-question-text" class="prep-question-text">Click "Next question" to start.</div>
+                <div id="prep-question-text" class="prep-question-text prep-selectable">Click "Next question" to start.</div>
+                <div class="prep-result-actions">
+                    <button type="button" id="prep-copy-question" class="btn btn-secondary btn-sm" title="Copy question">Copy</button>
+                    <button type="button" id="prep-send-question-chat" class="btn btn-secondary btn-sm" title="Copy and open ChatGPT">Send to chat</button>
+                </div>
             </div>
             <div class="input-group">
                 <label for="prep-answer">Your answer (practice)</label>
@@ -84,14 +91,20 @@
             <textarea id="prep-jd-paste" class="prep-ai-prompt-text mb-3" rows="3" placeholder="Paste the full or partial JD here to tailor the mock interview…"></textarea>
             <label for="prep-ai-prompt-text" class="block text-sm font-medium mb-1">Prompt to copy</label>
             <textarea id="prep-ai-prompt-text" class="prep-ai-prompt-text" rows="6" readonly></textarea>
-            <button type="button" id="prep-copy-ai-prompt" class="btn btn-primary">Copy prompt</button>
-            <a href="https://chat.openai.com/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="margin-left: 0.5rem;">Open ChatGPT</a>
+            <div class="prep-result-actions" style="margin-top: 0.5rem;">
+                <button type="button" id="prep-copy-ai-prompt" class="btn btn-primary">Copy prompt</button>
+                <button type="button" id="prep-copy-open-chat" class="btn btn-secondary" title="Copy prompt and open ChatGPT">Copy & open ChatGPT</button>
+            </div>
         </div>
 
         <div class="prep-tips card">
             <h2>📌 Quick tips for your role</h2>
-            <p class="description">Generic tips by role type. Adjust based on the actual job description.</p>
-            <div id="prep-tips-content" class="prep-tips-content"></div>
+            <p class="description">Generic tips by role type. Adjust based on the actual job description. Tap to select and copy, or use the buttons below.</p>
+            <div id="prep-tips-content" class="prep-tips-content prep-selectable"></div>
+            <div class="prep-result-actions" id="prep-tips-actions" style="display: none; margin-top: 0.5rem;">
+                <button type="button" id="prep-copy-tips" class="btn btn-secondary btn-sm">Copy tips</button>
+                <button type="button" id="prep-send-tips-chat" class="btn btn-secondary btn-sm">Send to chat</button>
+            </div>
         </div>
 
         <footer class="page-footer">

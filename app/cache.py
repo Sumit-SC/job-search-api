@@ -94,7 +94,11 @@ def jobspy_cache_key(
     )
 
 
-def rssjobs_cache_key(keywords: str, location: str, limit: int) -> str:
+def rssjobs_cache_key(
+    keywords: str, location: str, limit: int, feed_url: Optional[str] = None
+) -> str:
+    if feed_url and feed_url.strip():
+        return _make_key("rssjobs", {"feed_url": feed_url.strip(), "limit": limit})
     return _make_key(
         "rssjobs",
         {

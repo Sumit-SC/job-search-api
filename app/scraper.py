@@ -213,6 +213,45 @@ async def scrape_jobscollider(days: int = 3, query: str | None = None) -> List[J
     return out
 
 
+async def scrape_jobscollider_data(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape Jobscollider data-specific RSS feed (remote data jobs).
+    Data-analytics focused source.
+    """
+    url = "https://jobscollider.com/remote-data-jobs.rss"
+    async with httpx.AsyncClient() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    out: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", "") or ""
+        published = getattr(entry, "published", "") or ""
+        dt = _parse_date(published)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        job = Job(
+            id=f"jobscollider_data_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary,
+            source="jobscollider_data",
+            date=dt,
+            tags=["rss", "data"],
+        )
+        out.append(job)
+    return out
+
+
 async def scrape_remoteok(days: int = 3, query: str | None = None) -> List[Job]:
     """
     Scrape RemoteOK RSS feed.
@@ -2136,6 +2175,7 @@ async def scrape_all(
             [
                 scrape_weworkremotely(days=days, query=query),
                 scrape_jobscollider(days=days, query=query),
+                scrape_jobscollider_data(days=days, query=query),  # Data-analytics focused feed
                 scrape_remoteok(days=days, query=query),
                 scrape_remotive_api(days=days, query=query),
                 scrape_remotive_rss(days=days, query=query),

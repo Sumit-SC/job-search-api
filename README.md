@@ -10,6 +10,7 @@ Python job scraper service: 11+ RSS/HTTP sources and optional headless scrapers 
 - [Run locally](#run-locally)
 - [Deploy to Railway](#deploy-to-railway)
 - [Environment variables](#environment-variables)
+- [Docs & API reference](#docs--api-reference)
 - [Monitor & API docs](#monitor--api-docs)
 - [Roadmap](#roadmap)
 
@@ -109,11 +110,20 @@ Summary (see [Deploy → Set environment variables](#2-set-environment-variables
 
 ---
 
+## Docs & API reference
+
+- **Wiki/docs:** [docs/](docs/README.md) — API overview, response format, links to Swagger/ReDoc.
+- **Swagger UI:** `/docs` — Try endpoints; **response examples are JSON only** (no HTML or source code).
+- **ReDoc:** `/redoc` — Read-only API reference.
+- **OpenAPI:** `/openapi.json` — Machine-readable schema.
+
+---
+
 ## Monitor & API docs
 
 - **Monitor URL:** `https://your-app.up.railway.app/ui/monitor.html`
 - **Access:** Enter the same value you set for **`MONITOR_SECRET`** (in Railway → Variables). You can also pass it in the URL: `.../monitor.html?key=YOUR_SECRET` (avoid sharing that link).
-- **What it shows:** Health checks, job DB status, endpoint latencies, cache stats, **list of API endpoints** (method, path, description), **Test** button per endpoint (result shown below), and a link to **Swagger UI** (`/docs`) for full API documentation.
+- **What it shows:** Health checks, job DB status, endpoint latencies, cache stats, **list of API endpoints** (method, path, description), **Test** button per endpoint (result shown below), and a link to **Swagger UI** (`/docs`) for full API documentation. Swagger and OpenAPI expose only **JSON response examples** (and RSS for `/jobs/rss`); no HTML or app code.
 
 If `MONITOR_SECRET` is not set on the server, `GET /api/monitor` returns **503**.
 

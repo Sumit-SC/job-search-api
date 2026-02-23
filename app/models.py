@@ -3,10 +3,45 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, ConfigDict
+
+
+# Safe JSON examples for OpenAPI/Swagger only (no HTML or code)
+_JOB_EXAMPLE = {
+    "id": "example-1",
+    "title": "Data Analyst",
+    "company": "Example Corp",
+    "location": "Remote",
+    "url": "https://example.com/job/1",
+    "description": "Analyze data and build reports.",
+    "source": "remotive",
+    "date": "2025-02-15T12:00:00Z",
+    "tags": ["data", "analytics"],
+    "match_score": 85.0,
+    "yoe_min": 1,
+    "yoe_max": 3,
+}
+
+_JOBS_RESPONSE_EXAMPLE = {
+    "ok": True,
+    "count": 1,
+    "jobs": [_JOB_EXAMPLE],
+    "total": None,
+    "page": None,
+    "per_page": None,
+    "system": None,
+    "error": None,
+}
+
+_GROUPED_EXAMPLE = {
+    "ok": True,
+    "currencies": {"USD": [_JOB_EXAMPLE], "INR": []},
+    "error": None,
+}
 
 
 class Job(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [_JOB_EXAMPLE]})
     id: str
     title: str
     company: str
@@ -44,6 +79,7 @@ class SystemStats(BaseModel):
 
 
 class JobsResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [_JOBS_RESPONSE_EXAMPLE]})
     ok: bool = True
     count: int
     jobs: List[Job]
@@ -59,6 +95,7 @@ class JobsResponse(BaseModel):
 
 class GroupedByCurrencyResponse(BaseModel):
     """Response for /jobs/grouped-by-currency."""
+    model_config = ConfigDict(json_schema_extra={"examples": [_GROUPED_EXAMPLE]})
     ok: bool = True
     currencies: Dict[str, List[Job]] = Field(default_factory=dict)  # { "USD": [Job,...], "INR": [Job,...] }
     error: Optional[str] = None

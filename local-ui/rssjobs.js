@@ -51,7 +51,9 @@ const rssResultsCount = document.getElementById('rss-results-count');
 rssFetchBtn.addEventListener('click', fetchFromRssJobs);
 
 async function fetchFromRssJobs() {
-    const role = document.getElementById('rss-role').value.trim() || 'analyst';
+    const feedUrlInput = document.getElementById('rss-feed-url');
+    const feedUrl = feedUrlInput && feedUrlInput.value ? feedUrlInput.value.trim() : '';
+    const role = document.getElementById('rss-role').value.trim() || 'data analyst';
     const location = document.getElementById('rss-location').value.trim() || 'remote';
     const maxItems = parseInt(document.getElementById('rss-max').value) || 100;
 
@@ -60,7 +62,9 @@ async function fetchFromRssJobs() {
         location: location,
         limit: maxItems.toString(),
     });
-
+    if (feedUrl && feedUrl.startsWith('http')) {
+        params.set('feed_url', feedUrl);
+    }
     var skipCache = document.getElementById('rss-skip-cache');
     if (skipCache && skipCache.checked) params.set('skip_cache', 'true');
 
@@ -81,7 +85,7 @@ async function fetchFromRssJobs() {
     rssFetchBtn.querySelector('.btn-loader').style.display = 'inline';
 
     rssStatus.className = 'status-message info show';
-    rssStatus.textContent = '⏳ Fetching from rssjobs.app via backend proxy...';
+    rssStatus.textContent = feedUrl ? '⏳ Fetching your RSS feed...' : '⏳ Fetching from rssjobs.app (keywords + location)...';
 
     rssJobsContainer.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Loading RSS feed...</div>';
 
@@ -122,7 +126,10 @@ async function fetchFromRssJobs() {
     } catch (error) {
         rssStatus.className = 'status-message error show';
         rssStatus.textContent = '❌ Error: ' + error.message;
-        rssJobsContainer.innerHTML = '<div class="empty-state"><p>❌ ' + (error.message || 'Failed to fetch.') + '</p><p><button type="button" class="btn btn-primary" id="rss-retry-btn">Retry</button></p></div>';
+        var hint = (error.message || '').toLowerCase().indexOf('rss parse') !== -1
+            ? '<p class="input-hint" style="margin-top:8px;">Tip: Create a feed at rssjobs.app (click the button above), then paste the feed URL in the box and click Search.</p>'
+            : '';
+        rssJobsContainer.innerHTML = '<div class="empty-state"><p>❌ ' + (error.message || 'Failed to fetch.') + '</p>' + hint + '<p><button type="button" class="btn btn-primary" id="rss-retry-btn">Retry</button></p></div>';
         rssResultsCount.textContent = '';
         console.error('rssjobs.app fetch error:', error);
         var retryBtn = document.getElementById('rss-retry-btn');

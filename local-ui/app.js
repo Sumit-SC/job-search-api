@@ -51,6 +51,36 @@ function updateDateTimeDisplay() {
     }
 }
 
+// Copy text to clipboard; works in iframes when navigator.clipboard is blocked (fallback: temp textarea + execCommand)
+function copyTextToClipboard(text) {
+    if (!text || !String(text).trim()) return Promise.resolve(false);
+    const str = String(text);
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return navigator.clipboard.writeText(str).then(() => true).catch(() => {
+            return copyTextFallback(str);
+        });
+    }
+    return Promise.resolve(copyTextFallback(str));
+}
+function copyTextFallback(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return !!ok;
+    } catch (e) {
+        return false;
+    }
+}
+
 // Initialize datetime display on page load + delegated "Copy for ChatGPT" on job cards
 window.addEventListener('DOMContentLoaded', () => {
     updateDateTimeDisplay();
@@ -62,11 +92,13 @@ window.addEventListener('DOMContentLoaded', () => {
             if (isNaN(idx) || idx < 0 || idx >= lastDisplayedJobs.length) return;
             const job = lastDisplayedJobs[idx];
             const prompt = buildChatGPTPrepPrompt(job);
-            navigator.clipboard.writeText(prompt).then(() => {
+            copyTextToClipboard(prompt).then((copied) => {
                 window.open('https://chat.openai.com/', '_blank', 'noopener');
-                alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
-            }).catch(() => {
-                prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+                if (copied) {
+                    alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
+                } else {
+                    prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+                }
             });
         });
     }

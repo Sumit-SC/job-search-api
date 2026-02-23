@@ -278,6 +278,34 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function copyTextToClipboard(text) {
+    if (!text || !String(text).trim()) return Promise.resolve(false);
+    var str = String(text);
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return navigator.clipboard.writeText(str).then(function () { return true; }).catch(function () {
+            return copyTextFallback(str);
+        });
+    }
+    return Promise.resolve(copyTextFallback(str));
+}
+function copyTextFallback(text) {
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return !!ok;
+    } catch (e) {
+        return false;
+    }
+}
+
 if (jobspyJobsContainer) {
     jobspyJobsContainer.addEventListener('click', function (e) {
         var btn = e.target.closest('.job-copy-chatgpt-btn');
@@ -286,11 +314,13 @@ if (jobspyJobsContainer) {
         if (isNaN(idx) || idx < 0 || idx >= window.lastJobspyJobs.length) return;
         var job = window.lastJobspyJobs[idx];
         var prompt = buildChatGPTPrepPrompt(job);
-        navigator.clipboard.writeText(prompt).then(function () {
+        copyTextToClipboard(prompt).then(function (copied) {
             window.open('https://chat.openai.com/', '_blank', 'noopener');
-            alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
-        }).catch(function () {
-            window.prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+            if (copied) {
+                alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
+            } else {
+                window.prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+            }
         });
     });
 }

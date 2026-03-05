@@ -20,6 +20,8 @@ const searchStatus = document.getElementById('search-status');
 const jobsContainer = document.getElementById('jobs-container');
 const resultsTitle = document.getElementById('results-title');
 const resultsCount = document.getElementById('results-count');
+const apiHealthBadge = document.getElementById('api-health-badge');
+const apiHealthText = document.getElementById('api-health-text');
 
 // Helper: format datetime for display
 function formatDateTime(date) {
@@ -84,6 +86,8 @@ function copyTextFallback(text) {
 // Initialize datetime display on page load + delegated "Copy for ChatGPT" on job cards
 window.addEventListener('DOMContentLoaded', () => {
     updateDateTimeDisplay();
+    checkApiHealth();
+    setupRoadmapEmbed();
     if (jobsContainer) {
         jobsContainer.addEventListener('click', (e) => {
             const btn = e.target.closest('.job-copy-chatgpt-btn');
@@ -130,6 +134,7 @@ fetchBtn.addEventListener('click', async () => {
 
         if (data.ok) {
             allJobs = data.jobs || [];
+            updateSourceOptions(allJobs);
             const now = new Date().toISOString();
             
             // Update last fetched timestamp
@@ -209,6 +214,7 @@ refreshBtn.addEventListener('click', async () => {
         if (data.ok) {
             // Replace in-memory jobs with freshly scraped ones
             allJobs = data.jobs || [];
+            updateSourceOptions(allJobs);
             const now = new Date().toISOString();
             
             // Update timestamps after refresh (refresh saves to storage, so this is when data was refreshed)
@@ -277,6 +283,24 @@ function searchJobs() {
 function showStep3Card() {
     const step3 = document.getElementById('step3-card');
     if (step3 && allJobs.length > 0) step3.classList.remove('hidden');
+}
+
+function normalizeSourceLabel(src) {
+    return String(src || '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function updateSourceOptions(jobs) {
+    const select = document.getElementById('search-sources-select');
+    if (!select || !Array.isArray(jobs)) return;
+    const prev = new Set(Array.from(select.selectedOptions).map(o => o.value));
+    const discovered = Array.from(new Set(jobs.map(j => (j && j.source) ? String(j.source).trim() : '').filter(Boolean))).sort();
+    select.innerHTML = discovered.map((src) => `<option value="${escapeHtml(src)}">${escapeHtml(normalizeSourceLabel(src))}</option>`).join('');
+    Array.from(select.options).forEach((opt) => {
+        if (prev.has(opt.value)) opt.selected = true;
+    });
 }
 
 // Apply current filters on in-memory jobs and render
@@ -531,6 +555,46 @@ function escapeHtml(text) {
 function updateResultsHeader(count) {
     resultsTitle.textContent = 'Jobs';
     resultsCount.textContent = `${count} ${count === 1 ? 'job' : 'jobs'} found`;
+}
+
+async function checkApiHealth() {
+    if (!apiHealthBadge || !apiHealthText) return;
+    try {
+        apiHealthBadge.classList.remove('is-ok', 'is-error');
+        apiHealthText.textContent = 'Checking API health...';
+        const response = await fetch(`${API_BASE_URL}/health`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const statusText = (data && data.status) ? String(data.status) : 'ok';
+        apiHealthBadge.classList.add('is-ok');
+        apiHealthText.textContent = `API: ${statusText.toUpperCase()} (${API_BASE_URL})`;
+    } catch (error) {
+        apiHealthBadge.classList.add('is-error');
+        apiHealthText.textContent = `API unreachable (${API_BASE_URL})`;
+        console.warn('Health check failed:', error);
+    }
+}
+
+function setupRoadmapEmbed() {
+    const toggle = document.getElementById('roadmap-embed-toggle');
+    const wrap = document.getElementById('roadmap-embed-wrap');
+    const iframe = document.getElementById('roadmap-embed-iframe');
+    if (!toggle || !wrap || !iframe) return;
+
+    const defaultRoadmap = 'https://roadmap.sh/data-analyst';
+    toggle.addEventListener('click', () => {
+        const isOpen = !wrap.classList.contains('hidden');
+        if (isOpen) {
+            wrap.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.textContent = 'Show embed';
+            return;
+        }
+        wrap.classList.remove('hidden');
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.textContent = 'Hide embed';
+        if (iframe.src === 'about:blank') iframe.src = defaultRoadmap;
+    });
 }
 
 // Initialize: Try to load jobs on page load

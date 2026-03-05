@@ -71,10 +71,15 @@ Check server logs when running `/debug/headless` to see which ones work.
 
 ## 📊 What Runs Locally
 
-### RSS Scrapers (14 sources)
+### RSS/API Scrapers (17+ sources)
 - ✅ **Works immediately** - No browser needed
 - ✅ **Fast** - ~30 seconds total
 - ✅ **Reliable** - HTTP requests only
+
+Includes recently added API/RSS adapters:
+- Greenhouse (configured company boards)
+- Lever (configured company boards)
+- HN RSS Jobs (`hnrss.org/jobs`)
 
 ### Headless Scrapers (8 sources)
 - ✅ **Requires Playwright** - Already installed by setup script
@@ -163,6 +168,9 @@ pip install -r requirements.txt
 - **Test RSS first** - Fast and reliable
 - **Test headless later** - Slow but comprehensive
 - **Data saves locally** - Check `data/jobs.json` file
+- **Enable Greenhouse/Lever quickly** by setting env vars before starting server:
+  - `$env:GREENHOUSE_BOARDS=\"stripe,airtable\"`
+  - `$env:LEVER_BOARDS=\"netflix,figma\"`
 
 ---
 

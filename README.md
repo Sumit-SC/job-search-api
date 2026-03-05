@@ -21,7 +21,7 @@ Python job scraper service: 11+ RSS/HTTP sources and optional headless scrapers 
 | Area | Details |
 |------|---------|
 | **API** | `GET /health`, `GET /jobs`, `POST /refresh`, RSS feed, grouped/salary endpoints, system info |
-| **RSS/HTTP** | WeWorkRemotely, RemoteOK, Jobscollider, Remotive, Wellfound, Indeed, Remote.co, Jobspresso, Himalayas, Authentic Jobs |
+| **RSS/HTTP** | Greenhouse (configured boards), Lever (configured boards), WeWorkRemotely, RemoteOK, HN RSS Jobs, Jobscollider, Remotive, Wellfound, Indeed, Remote.co, Jobspresso, Himalayas, Authentic Jobs |
 | **Headless** (when `ENABLE_HEADLESS=1`) | LinkedIn Jobs, Indeed, Naukri.com; more planned (Monster, Glassdoor, etc.) |
 | **UI** | `/ui/` — Core API, RSSJobs.app, JobSpy, JobSpy.tech embed, Interview Prep; `/ui/monitor.html` — password-protected health & API docs |
 
@@ -38,7 +38,8 @@ pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-Set env (optional): `JOBS_SCRAPER_DATA_DIR=data`, `ENABLE_HEADLESS=1`. Then:
+Set env (optional): `JOBS_SCRAPER_DATA_DIR=data`, `ENABLE_HEADLESS=1`.  
+Optional board adapters: `GREENHOUSE_BOARDS=stripe,airtable`, `LEVER_BOARDS=netflix,figma`. Then:
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -70,6 +71,8 @@ In the Railway dashboard:
 | `JOBS_SCRAPER_DATA_DIR` | No | Directory for JSON job store (default `data`). On Railway you can use `/app/data` (ephemeral unless you add a volume). |
 | `ENABLE_HEADLESS` | No | Set to `1` to enable Playwright scrapers (LinkedIn, Indeed, Naukri). Default `1`. Use `0` for RSS-only. |
 | `USE_JOBSPY` | No | Set to `1` to use jobspy library where applicable. Default `0`. |
+| `GREENHOUSE_BOARDS` | No | Comma-separated Greenhouse company slugs (e.g. `stripe,airtable`) for public board API scraping. |
+| `LEVER_BOARDS` | No | Comma-separated Lever company slugs (e.g. `netflix,figma`) for public postings API scraping. |
 
 **Example (minimal for monitor + file storage):**
 
@@ -107,6 +110,8 @@ Summary (see [Deploy → Set environment variables](#2-set-environment-variables
 | `JOBS_SCRAPER_DATA_DIR` | `data` | Directory for the JSON job file. |
 | `ENABLE_HEADLESS` | `1` | `1` = enable Playwright scrapers; `0` = RSS only. |
 | `USE_JOBSPY` | `0` | `1` = use jobspy where applicable. |
+| `GREENHOUSE_BOARDS` | *(empty)* | Greenhouse company slugs for API scraping. |
+| `LEVER_BOARDS` | *(empty)* | Lever company slugs for API scraping. |
 
 ---
 
@@ -133,6 +138,21 @@ If `MONITOR_SECRET` is not set on the server, `GET /api/monitor` returns **503**
 
 - More Playwright scrapers (Monster, Foundit, Glassdoor, Hirist, etc.).
 - Persist jobs in Postgres/Neon instead of JSON when desired.
+
+---
+
+## Notebook sandboxes
+
+For local testing and iterative scraper experiments:
+
+- `jobspy-testing/jobspy_test.ipynb` — JobSpy UI notebook.
+- `jobsentinel-testing/boards_test.ipynb` — multi-board test harness (public APIs/RSS + optional JobSpy).
+- `rssjobs-testing/rssjobs_test.ipynb` — rssjobs/jobber feed parser.
+
+## UI polish notes
+
+- `local-ui/index.html` now follows a clearer 3-step flow (refresh, fetch, then local filtering) so it is easier to demo in portfolio walkthroughs.
+- `local-ui/jobspy.html` remains the dedicated JobSpy sandbox when you need board-specific parameter tuning.
 
 ---
 

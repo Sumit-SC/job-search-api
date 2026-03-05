@@ -11,8 +11,8 @@
         <header>
             <div class="header-left" aria-hidden="true"></div>
             <div class="header-center">
-                <h1>🔍 Job Search API</h1>
-                <p class="subtitle-brand">~ made by mitSu</p>
+                <h1>🔍 Job Search API Console</h1>
+                <p class="subtitle-brand">Portfolio-ready multi-source job search workspace</p>
                 <nav class="top-nav">
                     <a href="index.html" class="nav-link nav-link-active">Core API</a>
                     <a href="rssjobs.html" class="nav-link">RSSJobs.app</a>
@@ -29,8 +29,8 @@
 
         <div class="controls-section controls-section--stacked">
             <div class="card card-step1-2" style="padding: 1.5rem 1.75rem;">
-                <h2 style="margin-bottom: 0.5rem;">Load & Refresh Data</h2>
-                <p class="description" style="margin-bottom: 1.25rem;">Step 1: Refresh from selected sources (scrapes new data). Step 2: Fetch saved jobs from the JSON store. Step 3: Use the Search panel to filter what’s already loaded.</p>
+                <h2 style="margin-bottom: 0.5rem;">Load, Refresh, and Analyze</h2>
+                <p class="description" style="margin-bottom: 1.25rem;">Step 1 refreshes from sources, Step 2 loads saved jobs, and Step 3 lets you run fast local filtering without re-scraping.</p>
 
                 <div class="input-row">
                     <div class="input-group">
@@ -53,7 +53,7 @@
                 </div>
 
                 <div class="refresh-controls">
-                    <h3 class="section-title">Step 1 – Refresh from sources</h3>
+                    <h3 class="section-title">Step 1 - Refresh from sources</h3>
                     <p class="section-help">
                         <strong>How it works:</strong> Fetches RSS feeds from job boards (or runs headless scrapers), then filters jobs by:
                         <br>• <strong>Query:</strong> Matches job title/description (very lenient - "data analyst" matches most data-related jobs)
@@ -84,7 +84,7 @@
                 <hr class="card-divider" />
 
                 <div class="fetch-controls">
-                    <h3 class="section-title">Step 2 – Fetch saved data</h3>
+                    <h3 class="section-title">Step 2 - Fetch saved data</h3>
                     <p class="section-help">Loads existing jobs via <code>GET /jobs</code> without running scrapers.</p>
                     <div class="input-row">
                         <div class="input-group">
@@ -112,8 +112,8 @@
 
             <!-- Step 3: shown only after user does Step 1 or Step 2 -->
             <div id="step3-card" class="card card-step3 hidden" style="padding: 1.5rem 1.75rem;">
-                <h2 style="margin-bottom: 0.5rem;">Search & Filter Jobs</h2>
-                <p class="description" style="margin-bottom: 1rem;">Step 3: Filter and search through the jobs already loaded. This does not hit the API again.</p>
+                <h2 style="margin-bottom: 0.5rem;">Search and Filter Jobs</h2>
+                <p class="description" style="margin-bottom: 1rem;">Step 3: Narrow and rank what is already loaded in memory for fast iterative analysis.</p>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group">

@@ -1,0 +1,6 @@
+# JobSpy testing — use with: uv sync (preferred) or pip install -r requirements.txt
+python-jobspy>=1.1.79
+pandas>=2.0.0
+jupyter>=1.0.0
+ipykernel>=6.0.0
+ipywidgets>=8.0.0

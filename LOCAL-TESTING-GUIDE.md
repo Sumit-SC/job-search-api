@@ -57,6 +57,16 @@ python -m playwright install chromium
 # Enable headless scrapers (default is enabled)
 $env:ENABLE_HEADLESS = "1"
 
+# Optional: add more platforms via public company boards
+# These use official/public JSON APIs (no headless browser needed).
+# Example:
+#   - Greenhouse: https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
+#   - Lever: https://api.lever.co/v0/postings/<slug>?mode=json
+#
+# Set comma-separated company slugs to include in /refresh and /debug:
+$env:GREENHOUSE_BOARDS = "stripe,airtable"
+$env:LEVER_BOARDS = "netflix,figma"
+
 # Set data directory (optional, defaults to "data")
 $env:JOBS_SCRAPER_DATA_DIR = "data"
 ```

@@ -1,0 +1,9 @@
+ # Board scraping notebook deps (public endpoints + JobSpy where applicable)
+ requests>=2.32.0
+ feedparser>=6.0.11
+ pandas>=2.0.0
+ jupyter>=1.0.0
+ ipykernel>=6.0.0
+ ipywidgets>=8.0.0
+ python-jobspy>=1.1.79
+ 

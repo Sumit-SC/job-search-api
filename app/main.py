@@ -890,7 +890,10 @@ async def debug_scrapers() -> dict:
         scrape_weworkremotely,
         scrape_jobscollider,
         scrape_jobscollider_data,
+        scrape_greenhouse,
+        scrape_lever,
         scrape_remoteok,
+        scrape_hnrss_jobs,
         scrape_remotive_api,
         scrape_remotive_rss,
         scrape_remotive_data_feed,
@@ -907,10 +910,13 @@ async def debug_scrapers() -> dict:
     test_query = "data analyst"
     test_days = 7
     scrapers = {
+        "greenhouse": scrape_greenhouse,
+        "lever": scrape_lever,
         "weworkremotely": scrape_weworkremotely,
         "jobscollider": scrape_jobscollider,
         "jobscollider_data": scrape_jobscollider_data,
         "remoteok": scrape_remoteok,
+        "hnrss_jobs": scrape_hnrss_jobs,
         "remotive_api": scrape_remotive_api,
         "remotive_rss": scrape_remotive_rss,
         "remotive_data": scrape_remotive_data_feed,

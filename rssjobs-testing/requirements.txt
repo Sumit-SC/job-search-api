@@ -1,0 +1,8 @@
+ # rssjobs/jobber RSS testing — use with: uv sync (preferred) or pip install -r requirements.txt
+ requests>=2.32.0
+ feedparser>=6.0.11
+ pandas>=2.0.0
+ jupyter>=1.0.0
+ ipykernel>=6.0.0
+ ipywidgets>=8.0.0
+

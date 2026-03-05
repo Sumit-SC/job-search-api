@@ -14,8 +14,16 @@ JOBSPY_SUPPORTED_SITES = [
     "indeed", "linkedin", "zip_recruiter", "glassdoor", "google",
     "bayt", "naukri", "bdjobs",
 ]
-JOBSPY_PRESET_POPULAR = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]
-JOBSPY_PRESET_REMOTE = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]  # same boards, use location=Remote
+# Popular = major global boards + India-friendly boards
+JOBSPY_PRESET_POPULAR = [
+    "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
+    "naukri", "bdjobs",
+]
+# Remote = same plus Naukri/BDJobs so remote-India roles are included when available
+JOBSPY_PRESET_REMOTE = [
+    "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
+    "naukri", "bdjobs",
+]  # use location=Remote + is_remote
 JOBSPY_ALL_BOARDS = list(JOBSPY_SUPPORTED_SITES)
 
 
@@ -50,6 +58,11 @@ async def scrape_jobspy_sources(
     Use python-jobspy to scrape job boards. site_name or preset selects boards.
     Scrapes each site separately and merges so one failing site does not block others.
     country_indeed is required for Indeed/Glassdoor (e.g. usa, india, uk).
+
+    This wrapper also:
+    - Defaults missing query to a data-analytics friendly term ("data analyst")
+    - Infers remote-only when location contains remote/WFH keywords
+    - Infers India as country when location clearly points to India
     """
     try:
         from jobspy import scrape_jobs as jobspy_scrape_jobs  # type: ignore
@@ -59,6 +72,29 @@ async def scrape_jobspy_sources(
 
     import asyncio
 
+    # Normalize search inputs for relevance
+    search_query = (query or "data analyst").strip()
+    loc_str = (location or "").strip()
+    loc_lower = loc_str.lower()
+
+    # Infer remote filter if location suggests remote but caller did not set is_remote
+    inferred_is_remote = is_remote
+    if not inferred_is_remote:
+        remote_markers = ["remote", "work from home", "wfh", "anywhere", "global"]
+        if any(m in loc_lower for m in remote_markers):
+            inferred_is_remote = True
+
+    # Infer India for Indeed/Glassdoor when location clearly points to India and country not overridden
+    country = (country_indeed or "usa").strip().lower()
+    if country == "usa":
+        india_markers = [
+            "india", "pune", "mumbai", "bombay", "bangalore", "bengaluru",
+            "delhi", "gurgaon", "gurugram", "hyderabad", "chennai",
+            "noida", "ahmedabad", "kolkata", "calcutta",
+        ]
+        if any(m in loc_lower for m in india_markers):
+            country = "india"
+
     sites = resolve_jobspy_sites(site_name, preset)
     hours_old = max(1, days * 24)
     wanted_per_site = max(10, min(results_wanted // max(1, len(sites)), 100))
@@ -67,13 +103,13 @@ async def scrape_jobspy_sources(
         try:
             df = jobspy_scrape_jobs(
                 site_name=[s],
-                search_term=query or "",
-                location=location or "",
+                search_term=search_query,
+                location=loc_str,
                 results_wanted=wanted_per_site,
                 hours_old=hours_old,
                 verbose=0,
-                country_indeed=country_indeed,
-                is_remote=is_remote,
+                country_indeed=country,
+                is_remote=inferred_is_remote,
             )
             return df.to_dict(orient="records") if df is not None and not df.empty else []
         except Exception as e:

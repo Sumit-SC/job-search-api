@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -119,6 +120,220 @@ def _matches_query(title: str, summary: str, query: str | None) -> bool:
     
     # For specific queries, match query words
     return any(w in text for w in query_words)
+
+
+def _env_csv(name: str) -> List[str]:
+    """Parse comma-separated env var into a list of non-empty values."""
+    import os
+    raw = (os.getenv(name, "") or "").strip()
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p and p.strip()]
+
+
+async def _fetch_json(client: httpx.AsyncClient, url: str, timeout: float = 20.0, retries: int = 2) -> object | None:
+    text = await fetch_text(client, url, timeout=timeout, retries=retries)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception as e:
+        logger.warning(f"Failed to parse JSON from {url}: {e}")
+        return None
+
+
+async def scrape_greenhouse_company(company_slug: str, days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape a public Greenhouse board via the official boards API.
+    Requires only the company slug (e.g. 'stripe', 'airtable', ...).
+    """
+    slug = (company_slug or "").strip()
+    if not slug:
+        return []
+    url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            data = await _fetch_json(client, url, timeout=25.0, retries=2)
+        if not isinstance(data, dict):
+            return []
+        jobs: List[Job] = []
+        for item in data.get("jobs", []) or []:
+            try:
+                title = (item.get("title") or "").strip()
+                link = (item.get("absolute_url") or "").strip()
+                loc = (item.get("location") or {}).get("name") if isinstance(item.get("location"), dict) else ""
+                updated = (item.get("updated_at") or item.get("created_at") or "").strip()
+                dt = _parse_date(updated)
+                if dt and not _within_days(dt, days):
+                    continue
+                if not _matches_query(title, f"{loc} {slug}", query):
+                    continue
+                if not link:
+                    continue
+                jobs.append(
+                    Job(
+                        id=f"greenhouse_{slug}_{hash(link)}",
+                        title=title or "Untitled job",
+                        company=slug,
+                        location=loc or "Unknown",
+                        url=link,
+                        description="",
+                        source="greenhouse",
+                        date=dt,
+                        tags=["api", "greenhouse"],
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error processing greenhouse job ({slug}): {e}")
+                continue
+        return jobs
+    except Exception as e:
+        logger.warning(f"Greenhouse board fetch failed ({slug}): {e}")
+        return []
+
+
+async def scrape_lever_company(company_slug: str, days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape a public Lever board via their postings JSON endpoint.
+    Requires only the company slug (e.g. 'netflix', 'figma', ...).
+    """
+    slug = (company_slug or "").strip()
+    if not slug:
+        return []
+    url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            data = await _fetch_json(client, url, timeout=25.0, retries=2)
+        if not isinstance(data, list):
+            return []
+        jobs: List[Job] = []
+        for item in data:
+            try:
+                if not isinstance(item, dict):
+                    continue
+                title = (item.get("text") or "").strip()
+                link = (item.get("hostedUrl") or "").strip()
+                categories = item.get("categories") if isinstance(item.get("categories"), dict) else {}
+                loc = (categories.get("location") or "").strip() if isinstance(categories, dict) else ""
+                created_ms = item.get("createdAt")
+                dt: datetime | None = None
+                if isinstance(created_ms, (int, float)) and created_ms > 0:
+                    try:
+                        dt = datetime.fromtimestamp(created_ms / 1000.0, tz=timezone.utc)
+                    except Exception:
+                        dt = None
+                if dt and not _within_days(dt, days):
+                    continue
+                if not _matches_query(title, f"{loc} {slug}", query):
+                    continue
+                if not link:
+                    continue
+                jobs.append(
+                    Job(
+                        id=f"lever_{slug}_{hash(link)}",
+                        title=title or "Untitled job",
+                        company=slug,
+                        location=loc or "Unknown",
+                        url=link,
+                        description="",
+                        source="lever",
+                        date=dt,
+                        tags=["api", "lever"],
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error processing lever job ({slug}): {e}")
+                continue
+        return jobs
+    except Exception as e:
+        logger.warning(f"Lever board fetch failed ({slug}): {e}")
+        return []
+
+
+async def scrape_greenhouse(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape configured Greenhouse company boards (env: GREENHOUSE_BOARDS=slug1,slug2,...).
+    Returns empty list if not configured.
+    """
+    slugs = _env_csv("GREENHOUSE_BOARDS")
+    if not slugs:
+        return []
+    results = await asyncio.gather(
+        *[scrape_greenhouse_company(s, days=days, query=query) for s in slugs],
+        return_exceptions=True,
+    )
+    out: List[Job] = []
+    for res in results:
+        if isinstance(res, list):
+            out.extend(res)
+    return out
+
+
+async def scrape_lever(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape configured Lever company boards (env: LEVER_BOARDS=slug1,slug2,...).
+    Returns empty list if not configured.
+    """
+    slugs = _env_csv("LEVER_BOARDS")
+    if not slugs:
+        return []
+    results = await asyncio.gather(
+        *[scrape_lever_company(s, days=days, query=query) for s in slugs],
+        return_exceptions=True,
+    )
+    out: List[Job] = []
+    for res in results:
+        if isinstance(res, list):
+            out.extend(res)
+    return out
+
+
+async def scrape_hnrss_jobs(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape Hacker News 'jobs' feed via hnrss.org.
+    This is not a traditional job board, but it’s a useful additional source.
+    """
+    url = "https://hnrss.org/jobs"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            xml = await fetch_text(client, url, timeout=20.0, retries=2)
+        if not xml:
+            return []
+        feed = feedparser.parse(xml)
+        out: List[Job] = []
+        for entry in feed.entries:
+            try:
+                title = getattr(entry, "title", "") or ""
+                link = getattr(entry, "link", "") or ""
+                summary = getattr(entry, "summary", "") or ""
+                published = getattr(entry, "published", "") or ""
+                dt = _parse_date(published)
+                if dt and not _within_days(dt, days):
+                    continue
+                if not _matches_query(title, summary, query):
+                    continue
+                if not link:
+                    continue
+                out.append(
+                    Job(
+                        id=f"hnrss_jobs_{hash(link)}",
+                        title=title,
+                        company="Unknown",
+                        location="Remote",
+                        url=link,
+                        description=summary,
+                        source="hnrss_jobs",
+                        date=dt,
+                        tags=["rss", "hn"],
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error processing hnrss jobs entry: {e}")
+                continue
+        return out
+    except Exception as e:
+        logger.warning(f"hnrss jobs feed failed: {e}")
+        return []
 
 
 async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List[Job]:
@@ -293,23 +508,60 @@ async def scrape_remoteok(days: int = 3, query: str | None = None) -> List[Job]:
 async def scrape_remotive_api(days: int = 3, query: str | None = None) -> List[Job]:
     """
     Scrape Remotive via their public API.
+
+    Uses category filters for:
+    - Data Analysis  -> slug "data"
+    - AI / ML        -> slug "ai-ml"
+    - Project Management -> slug "project-management"
+
+    Also passes the free-text query as Remotive's `search` parameter so you
+    can search for skills like "front end" in titles/descriptions.
     """
-    url = f"https://remotive.com/api/remote-jobs?search={query or 'data analyst'}"
+    search_term = (query or "data analyst").strip()
+    categories = ["data", "ai-ml", "project-management"]
+
+    all_items: List[dict] = []
+    seen_urls: set[str] = set()
+
     async with httpx.AsyncClient() as client:
-        data = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=15.0)
-        if data.status_code != 200:
-            return []
-        try:
-            json_data = data.json()
-        except Exception:
-            return []
-    
-    jobs_list = json_data.get("jobs") or json_data.get("remote-jobs") or json_data.get("results") or []
-    if not isinstance(jobs_list, list):
+        for cat in categories:
+            try:
+                resp = await client.get(
+                    "https://remotive.com/api/remote-jobs",
+                    params={
+                        "category": cat,
+                        "search": search_term,
+                        "limit": 100,
+                    },
+                    headers={"User-Agent": USER_AGENT},
+                    timeout=15.0,
+                )
+            except Exception:
+                continue
+
+            if resp.status_code != 200:
+                continue
+            try:
+                json_data = resp.json()
+            except Exception:
+                continue
+
+            jobs_list = json_data.get("jobs") or json_data.get("remote-jobs") or json_data.get("results") or []
+            if not isinstance(jobs_list, list):
+                continue
+
+            for item in jobs_list:
+                url = item.get("url") or ""
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                all_items.append(item)
+
+    if not all_items:
         return []
-    
+
     out: List[Job] = []
-    for item in jobs_list:
+    for item in all_items:
         if not item.get("title") or not item.get("url"):
             continue
         pub_date = item.get("publication_date") or item.get("created_at") or ""
@@ -2173,10 +2425,13 @@ async def scrape_all(
     if mode in ("rss", "all"):
         tasks.extend(
             [
+                scrape_greenhouse(days=days, query=query),
+                scrape_lever(days=days, query=query),
                 scrape_weworkremotely(days=days, query=query),
                 scrape_jobscollider(days=days, query=query),
                 scrape_jobscollider_data(days=days, query=query),  # Data-analytics focused feed
                 scrape_remoteok(days=days, query=query),
+                scrape_hnrss_jobs(days=days, query=query),
                 scrape_remotive_api(days=days, query=query),
                 scrape_remotive_rss(days=days, query=query),
                 scrape_remotive_data_feed(days=days, query=query),  # Remotive data category

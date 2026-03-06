@@ -1,0 +1,15 @@
+[project]
+name = "custom-scrapers-testing"
+version = "0.1.0"
+description = "Dry-run tests for custom job scrapers (rssjobs.app, hiring.cafe)"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "feedparser>=6.0.11",
+    "pandas>=2.1.0",
+    "beautifulsoup4>=4.12.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.29.0",
+    "ipywidgets>=8.1.0",
+]

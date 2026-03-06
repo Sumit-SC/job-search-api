@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Custom Scrapers — Job Fetcher</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f8fafc;--card:#fff;--text:#1e293b;--text2:#64748b;--border:#e2e8f0;--pri:#2563eb;--pri-h:#1d4ed8;--ok:#10b981;--err:#ef4444;--warn:#f59e0b;--r:8px;--sh:0 1px 3px rgba(0,0,0,.08)}
+[data-theme="dark"]{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--text2:#94a3b8;--border:#334155;--sh:0 1px 3px rgba(0,0,0,.3)}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px}
+header h1{font-size:1.3rem;font-weight:700}
+header .sub{color:var(--text2);font-size:.85rem}
+.theme-btn{background:none;border:1px solid var(--border);border-radius:var(--r);padding:6px 10px;cursor:pointer;font-size:1rem}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--sh);margin-bottom:16px}
+.card h2{font-size:1rem;margin-bottom:10px;color:var(--text)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:.75rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+input[type="text"],input[type="number"],select{padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:.9rem;background:var(--card);color:var(--text);min-width:140px}
+input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.btn{padding:8px 18px;border:none;border-radius:var(--r);font-size:.85rem;font-weight:600;cursor:pointer;transition:.15s}
+.btn-pri{background:var(--pri);color:#fff}.btn-pri:hover{background:var(--pri-h)}
+.btn-sec{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-sec:hover{background:var(--border)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.sources-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;margin:10px 0}
+.src-chip{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:.8rem;cursor:pointer;transition:.15s;user-select:none}
+.src-chip:hover{border-color:var(--pri)}
+.src-chip.active{background:rgba(37,99,235,.08);border-color:var(--pri);color:var(--pri)}
+.src-chip .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-rss{background:var(--warn)}.dot-api{background:var(--ok)}
+.src-chip .count{margin-left:auto;font-weight:700;font-size:.75rem}
+.stats{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+.stat{text-align:center}.stat .num{font-size:1.4rem;font-weight:700;color:var(--pri)}.stat .lbl{font-size:.7rem;color:var(--text2);text-transform:uppercase}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.toolbar input[type="text"]{flex:1;min-width:200px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text2);font-size:.75rem;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:var(--pri)}
+th .arrow{font-size:.65rem;margin-left:3px}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:hover{background:rgba(37,99,235,.03)}
+.job-title{font-weight:600;color:var(--pri);text-decoration:none;display:block;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job-title:hover{text-decoration:underline}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:600;background:rgba(37,99,235,.08);color:var(--pri)}
+.tag-ok{background:rgba(16,185,129,.1);color:var(--ok)}
+.tag-warn{background:rgba(245,158,11,.1);color:var(--warn)}
+.empty{text-align:center;padding:40px;color:var(--text2)}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--pri);border-radius:50%;animation:spin .6s linear infinite;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin:8px 0}
+.progress-bar{height:100%;background:var(--pri);transition:width .3s}
+@media(max-width:768px){.sources-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.row{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Custom Scrapers — Job Fetcher</h1>
+      <p class="sub">22 sources · RSS + JSON APIs · Remote & Data/Analyst roles</p>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="Toggle theme">🌙</button>
+  </header>
+
+  <div class="card">
+    <h2>Search</h2>
+    <div class="row">
+      <div class="field"><label>Keywords</label><input type="text" id="queryInput" value="analyst" placeholder="data analyst, BI..."></div>
+      <div class="field"><label>Max per source</label><input type="number" id="limitInput" value="50" min="5" max="200" step="5"></div>
+      <div class="field" style="justify-content:end">
+        <div class="row" style="gap:6px">
+          <button class="btn btn-pri" id="fetchBtn">Fetch Jobs</button>
+          <button class="btn btn-sec" id="fetchSelectedBtn">Fetch Selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2>Sources</h2>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sec" id="selectAllBtn" style="padding:4px 10px;font-size:.75rem">Select All</button>
+        <button class="btn btn-sec" id="selectNoneBtn" style="padding:4px 10px;font-size:.75rem">None</button>
+        <button class="btn btn-sec" id="selectWorkingBtn" style="padding:4px 10px;font-size:.75rem">Working Only</button>
+      </div>
+    </div>
+    <div class="sources-grid" id="sourcesGrid"></div>
+    <div class="progress" id="progressWrap" style="display:none"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+  </div>
+
+  <div class="card" id="statsCard" style="display:none">
+    <div class="stats" id="statsRow"></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" id="filterInput" placeholder="Filter results by title, company, source...">
+      <select id="sourceFilter"><option value="">All sources</option></select>
+      <span id="countLabel" style="font-size:.8rem;color:var(--text2)"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="jobsTable">
+        <thead>
+          <tr>
+            <th data-col="title">Title <span class="arrow"></span></th>
+            <th data-col="company">Company <span class="arrow"></span></th>
+            <th data-col="location">Location <span class="arrow"></span></th>
+            <th data-col="source">Source <span class="arrow"></span></th>
+            <th data-col="date">Date <span class="arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="jobsBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyMsg">Click <strong>Fetch Jobs</strong> to load from all sources.</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+let allJobs = [];
+let sources = {};
+let sortCol = "date";
+let sortDir = -1;
+let selectedSources = new Set();
+const workingSources = new Set();
+
+// Theme
+const themeBtn = $("#themeBtn");
+const savedTheme = localStorage.getItem("theme") || "light";
+document.documentElement.setAttribute("data-theme", savedTheme);
+themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+themeBtn.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  themeBtn.textContent = next === "dark" ? "☀️" : "🌙";
+});
+
+// Load sources
+async function loadSources() {
+  try {
+    const r = await fetch("/api/sources");
+    sources = await r.json();
+    renderSources();
+    selectedSources = new Set(Object.keys(sources));
+    updateChips();
+  } catch(e) { console.error("Failed to load sources", e); }
+}
+
+function renderSources() {
+  const grid = $("#sourcesGrid");
+  grid.innerHTML = "";
+  for (const [id, cfg] of Object.entries(sources)) {
+    const chip = document.createElement("div");
+    chip.className = "src-chip active";
+    chip.dataset.id = id;
+    chip.innerHTML = `<span class="dot dot-${cfg.type === 'rss' ? 'rss' : 'api'}"></span>
+      <span>${cfg.name}</span>
+      <span class="count" data-count="${id}"></span>`;
+    chip.addEventListener("click", () => {
+      if (selectedSources.has(id)) selectedSources.delete(id);
+      else selectedSources.add(id);
+      updateChips();
+    });
+    grid.appendChild(chip);
+  }
+}
+
+function updateChips() {
+  $$(".src-chip").forEach(c => {
+    c.classList.toggle("active", selectedSources.has(c.dataset.id));
+  });
+}
+
+$("#selectAllBtn").addEventListener("click", () => { selectedSources = new Set(Object.keys(sources)); updateChips(); });
+$("#selectNoneBtn").addEventListener("click", () => { selectedSources.clear(); updateChips(); });
+$("#selectWorkingBtn").addEventListener("click", () => { selectedSources = new Set(workingSources); updateChips(); });
+
+// Fetch
+async function fetchJobs(sourceIds) {
+  const q = $("#queryInput").value.trim() || "analyst";
+  const limit = $("#limitInput").value || 50;
+  const ids = sourceIds.join(",");
+
+  $("#fetchBtn").disabled = true;
+  $("#fetchSelectedBtn").disabled = true;
+  $("#progressWrap").style.display = "block";
+  $("#progressBar").style.width = "30%";
+  $("#emptyMsg").style.display = "none";
+
+  try {
+    const r = await fetch(`/api/fetch?sources=${ids}&q=${encodeURIComponent(q)}&limit=${limit}`);
+    $("#progressBar").style.width = "90%";
+    const data = await r.json();
+    allJobs = data.jobs || [];
+
+    // Update source counts
+    for (const [sid, st] of Object.entries(data.sources || {})) {
+      const el = $(`[data-count="${sid}"]`);
+      if (el) el.textContent = st.count || "";
+      if (st.count > 0) workingSources.add(sid);
+    }
+
+    // Update stats
+    const totalSources = Object.keys(data.sources || {}).length;
+    const workingCount = Object.values(data.sources || {}).filter(s => s.count > 0).length;
+    const totalMs = Object.values(data.sources || {}).reduce((a, s) => a + (s.ms || 0), 0);
+    $("#statsCard").style.display = "block";
+    $("#statsRow").innerHTML = `
+      <div class="stat"><div class="num">${data.total.toLocaleString()}</div><div class="lbl">Jobs Found</div></div>
+      <div class="stat"><div class="num">${workingCount}/${totalSources}</div><div class="lbl">Sources OK</div></div>
+      <div class="stat"><div class="num">${(totalMs/1000).toFixed(1)}s</div><div class="lbl">Total Time</div></div>
+    `;
+
+    // Update source filter dropdown
+    const sf = $("#sourceFilter");
+    sf.innerHTML = '<option value="">All sources</option>';
+    const srcNames = [...new Set(allJobs.map(j => j.source))].sort();
+    srcNames.forEach(n => { const o = document.createElement("option"); o.value = n; o.textContent = n; sf.appendChild(o); });
+
+    renderTable();
+  } catch(e) {
+    console.error(e);
+    alert("Fetch failed: " + e.message);
+  } finally {
+    $("#fetchBtn").disabled = false;
+    $("#fetchSelectedBtn").disabled = false;
+    $("#progressBar").style.width = "100%";
+    setTimeout(() => { $("#progressWrap").style.display = "none"; }, 400);
+  }
+}
+
+$("#fetchBtn").addEventListener("click", () => fetchJobs(Object.keys(sources)));
+$("#fetchSelectedBtn").addEventListener("click", () => fetchJobs([...selectedSources]));
+
+// Table rendering
+function getFiltered() {
+  const q = ($("#filterInput").value || "").toLowerCase();
+  const src = $("#sourceFilter").value;
+  return allJobs.filter(j => {
+    if (src && j.source !== src) return false;
+    if (q) {
+      const hay = `${j.title} ${j.company} ${j.source} ${j.location} ${j.seniority || ""} ${j.skills || ""}`.toLowerCase();
+      return hay.includes(q);
+    }
+    return true;
+  });
+}
+
+function renderTable() {
+  let jobs = getFiltered();
+
+  // Sort
+  jobs.sort((a, b) => {
+    let va = (a[sortCol] || "").toString().toLowerCase();
+    let vb = (b[sortCol] || "").toString().toLowerCase();
+    if (sortCol === "date") {
+      va = new Date(va || 0).getTime() || 0;
+      vb = new Date(vb || 0).getTime() || 0;
+      return (va - vb) * sortDir;
+    }
+    return va.localeCompare(vb) * sortDir;
+  });
+
+  // Update arrows
+  $$("th[data-col]").forEach(th => {
+    const arrow = th.querySelector(".arrow");
+    if (th.dataset.col === sortCol) arrow.textContent = sortDir > 0 ? "▲" : "▼";
+    else arrow.textContent = "";
+  });
+
+  const tbody = $("#jobsBody");
+  const shown = jobs.slice(0, 200);
+  tbody.innerHTML = shown.map(j => {
+    const dateStr = j.date ? new Date(j.date).toLocaleDateString("en-US", {month:"short",day:"numeric"}) : "";
+    return `<tr>
+      <td><a class="job-title" href="${j.url || '#'}" target="_blank" title="${esc(j.title)}">${esc(j.title)}</a>
+        ${j.seniority ? `<span class="tag">${esc(j.seniority)}</span>` : ""}
+        ${j.compensation ? `<span class="tag tag-ok">${esc(j.compensation)}</span>` : ""}
+      </td>
+      <td>${esc(j.company)}</td>
+      <td>${esc(j.location || "Remote")}</td>
+      <td><span class="tag tag-warn">${esc(j.source)}</span></td>
+      <td>${dateStr}</td>
+    </tr>`;
+  }).join("");
+
+  const total = jobs.length;
+  $("#countLabel").textContent = `${shown.length === total ? total : shown.length + " of " + total} jobs`;
+  $("#emptyMsg").style.display = total === 0 && allJobs.length === 0 ? "block" : "none";
+}
+
+function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+// Sorting
+$$("th[data-col]").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortDir *= -1;
+    else { sortCol = col; sortDir = col === "date" ? -1 : 1; }
+    renderTable();
+  });
+});
+
+// Filter
+$("#filterInput").addEventListener("input", renderTable);
+$("#sourceFilter").addEventListener("change", renderTable);
+
+loadSources();
+</script>
+</body>
+</html>

@@ -1,7 +1,0 @@
-feat: add Interview Prep button on job cards, send JD to prep flyout
-
-- Add "Interview Prep" button on each job card (amber, between Prep link and Copy for ChatGPT)
-- Clicking opens the prep flyout with role, company, and JD pre-filled via URL params
-- interview-prep.js now reads ?jd= param and auto-fills the JD paste textarea
-- Auto-scrolls to mock interview section when JD is provided
-- Style the new button for both light and dark themes

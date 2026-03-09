@@ -68,6 +68,19 @@
             <p id="monitor-gate-error" class="error hidden"></p>
         </div>
 
+        <div class="card" id="proxy-stats-card" style="margin-bottom:1.5rem;">
+            <h2>Proxy Pool Stats</h2>
+            <p class="description" style="margin-bottom:0.75rem;">Live usage stats from <code>GET /proxy-stats</code> — no auth required.</p>
+            <button type="button" id="proxy-stats-refresh-btn" class="btn btn-secondary" style="margin-bottom:0.75rem;">Refresh proxy stats</button>
+            <div id="proxy-stats-summary" style="font-size:0.9rem;margin-bottom:0.75rem;"></div>
+            <table class="monitor-table" id="proxy-stats-table" style="display:none;">
+                <thead>
+                    <tr><th>Proxy</th><th>Requests</th><th>OK</th><th>Fail</th><th>Rate</th><th>Last Used</th></tr>
+                </thead>
+                <tbody id="proxy-stats-tbody"></tbody>
+            </table>
+        </div>
+
         <div id="monitor-dashboard" class="monitor-dashboard">
             <div class="monitor-refresh">
                 <button type="button" id="monitor-refresh-btn" class="btn btn-primary">Refresh</button>
@@ -314,6 +327,54 @@
                     if (saved) keyInput.value = saved;
                 } catch (e) {}
             }
+        })();
+
+        (function () {
+            var summaryEl = document.getElementById("proxy-stats-summary");
+            var tableEl = document.getElementById("proxy-stats-table");
+            var tbodyEl = document.getElementById("proxy-stats-tbody");
+            var btn = document.getElementById("proxy-stats-refresh-btn");
+
+            function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+            function loadProxyStats() {
+                if (summaryEl) summaryEl.textContent = "Loading…";
+                fetch("/proxy-stats")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var p = data && data.proxy;
+                        if (!p) { summaryEl.textContent = "No data."; return; }
+                        var status = p.enabled
+                            ? "Enabled — " + p.pool_size + " proxies, " + p.total_requests + " total requests, " + p.success_rate + "% success"
+                            : "Disabled — no JOB_PROXY_URLS configured";
+                        summaryEl.innerHTML = "<strong>" + esc(status) + "</strong>";
+                        if (!p.per_proxy || !Object.keys(p.per_proxy).length) {
+                            tableEl.style.display = "none";
+                            return;
+                        }
+                        tableEl.style.display = "";
+                        tbodyEl.innerHTML = "";
+                        Object.keys(p.per_proxy).forEach(function (label) {
+                            var s = p.per_proxy[label];
+                            var rate = s.requests ? Math.round(s.successes / s.requests * 100) + "%" : "—";
+                            var last = s.last_used || "never";
+                            var tr = document.createElement("tr");
+                            tr.innerHTML =
+                                "<td><code>" + esc(label) + "</code></td>" +
+                                "<td>" + s.requests + "</td>" +
+                                "<td class='status-up'>" + s.successes + "</td>" +
+                                "<td class='status-down'>" + s.failures + "</td>" +
+                                "<td>" + rate + "</td>" +
+                                "<td style='font-size:0.8rem;'>" + esc(last) + "</td>";
+                            tbodyEl.appendChild(tr);
+                        });
+                    })
+                    .catch(function (err) {
+                        if (summaryEl) summaryEl.textContent = "Error: " + (err.message || "Failed to fetch");
+                    });
+            }
+            if (btn) btn.addEventListener("click", loadProxyStats);
+            loadProxyStats();
         })();
     </script>
 </body>

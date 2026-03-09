@@ -24,8 +24,22 @@ logger = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# ── Proxy rotation ──────────────────────────────────────────────────
+# ── Proxy rotation + stats ───────────────────────────────────────────
 _proxy_pool: list[str] = []
+_proxy_stats: dict[str, dict] = {}
+
+def _mask_proxy(url: str) -> str:
+    """Return a safe label like '156.229.*.111:62584' hiding user/pass."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        host = p.hostname or "?"
+        parts = host.split(".")
+        if len(parts) == 4:
+            host = f"{parts[0]}.*.*.{parts[3]}"
+        return f"{host}:{p.port}" if p.port else host
+    except Exception:
+        return "proxy"
 
 def _load_proxy_pool() -> list[str]:
     """Load proxies from JOB_PROXY_URLS env var (comma or newline separated)."""
@@ -38,6 +52,9 @@ def _load_proxy_pool() -> list[str]:
     _proxy_pool = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
     if _proxy_pool:
         logger.info(f"Loaded {len(_proxy_pool)} proxies for rotation")
+        for px in _proxy_pool:
+            label = _mask_proxy(px)
+            _proxy_stats[label] = {"requests": 0, "successes": 0, "failures": 0, "last_used": None}
     return _proxy_pool
 
 def _get_proxy() -> str | None:
@@ -45,30 +62,68 @@ def _get_proxy() -> str | None:
     pool = _load_proxy_pool()
     return random.choice(pool) if pool else None
 
+def _record_proxy_hit(label: str, success: bool):
+    """Record a proxy hit/miss for stats."""
+    if label not in _proxy_stats:
+        _proxy_stats[label] = {"requests": 0, "successes": 0, "failures": 0, "last_used": None}
+    _proxy_stats[label]["requests"] += 1
+    if success:
+        _proxy_stats[label]["successes"] += 1
+    else:
+        _proxy_stats[label]["failures"] += 1
+    _proxy_stats[label]["last_used"] = datetime.utcnow().isoformat() + "Z"
+
+def get_proxy_stats() -> dict:
+    """Return proxy usage stats for the monitoring endpoint."""
+    pool = _load_proxy_pool()
+    total_req = sum(s["requests"] for s in _proxy_stats.values())
+    total_ok = sum(s["successes"] for s in _proxy_stats.values())
+    total_fail = sum(s["failures"] for s in _proxy_stats.values())
+    return {
+        "enabled": len(pool) > 0,
+        "pool_size": len(pool),
+        "total_requests": total_req,
+        "total_successes": total_ok,
+        "total_failures": total_fail,
+        "success_rate": round(total_ok / total_req * 100, 1) if total_req else 0,
+        "per_proxy": dict(sorted(_proxy_stats.items(), key=lambda x: x[1]["requests"], reverse=True)),
+    }
+
 def _make_client(**kwargs) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with optional proxy rotation."""
     proxy = _get_proxy()
     if proxy:
         kwargs.setdefault("proxy", proxy)
-    return httpx.AsyncClient(**kwargs)
+    client = httpx.AsyncClient(**kwargs)
+    client._proxy_label = _mask_proxy(proxy) if proxy else None  # type: ignore[attr-defined]
+    return client
 
 
 async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0, retries: int = 2) -> str:
     """Fetch text with retries and better error handling."""
+    proxy_label = getattr(client, "_proxy_label", None)
     for attempt in range(retries + 1):
         try:
             resp = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout, follow_redirects=True)
             if resp.status_code == 200:
+                if proxy_label:
+                    _record_proxy_hit(proxy_label, True)
                 return resp.text
-            elif resp.status_code in [429, 503, 504]:  # Rate limit or service unavailable
+            elif resp.status_code in [429, 503, 504]:
+                if proxy_label:
+                    _record_proxy_hit(proxy_label, False)
                 if attempt < retries:
-                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s
+                    wait_time = (attempt + 1) * 2
                     logger.warning(f"Rate limited on {url}, retrying in {wait_time}s (attempt {attempt + 1}/{retries + 1})")
                     await asyncio.sleep(wait_time)
                     continue
             logger.warning(f"Failed to fetch {url}: HTTP {resp.status_code}")
+            if proxy_label:
+                _record_proxy_hit(proxy_label, False)
             return ""
         except httpx.TimeoutException:
+            if proxy_label:
+                _record_proxy_hit(proxy_label, False)
             if attempt < retries:
                 logger.warning(f"Timeout fetching {url}, retrying (attempt {attempt + 1}/{retries + 1})")
                 await asyncio.sleep(1)
@@ -76,6 +131,8 @@ async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0,
             logger.error(f"Timeout fetching {url} after {retries + 1} attempts")
             return ""
         except Exception as e:
+            if proxy_label:
+                _record_proxy_hit(proxy_label, False)
             if attempt < retries:
                 logger.warning(f"Error fetching {url}: {e}, retrying (attempt {attempt + 1}/{retries + 1})")
                 await asyncio.sleep(1)

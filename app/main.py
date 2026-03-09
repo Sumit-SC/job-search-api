@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
-from .scraper import scrape_all
+from .scraper import scrape_all, get_proxy_stats
 from .storage import load_jobs, save_jobs
 from .cache import (
     get_jobspy_cache,
@@ -314,7 +314,18 @@ async def monitor_dashboard(
     except Exception as e:
         checks.append({"name": "Cache", "status": "down", "error": str(e)[:200]})
 
-    # 6) Available API endpoints (for docs + test buttons)
+    # 6) Proxy stats
+    try:
+        pstats = get_proxy_stats()
+        checks.append({
+            "name": "Proxy Pool",
+            "status": "up" if pstats["enabled"] else "disabled",
+            "detail": pstats,
+        })
+    except Exception as e:
+        checks.append({"name": "Proxy Pool", "status": "error", "error": str(e)[:200]})
+
+    # 7) Available API endpoints (for docs + test buttons)
     endpoints_list: List[dict] = []
     try:
         for route in request.app.routes:
@@ -883,6 +894,13 @@ async def rssjobs_proxy(
             content={"ok": False, "count": 0, "jobs": [], "error": f"Error: {str(e)}"},
             headers=_jobs_response_headers(False),
         )
+
+
+@app.get("/proxy-stats")
+async def proxy_stats_endpoint() -> dict:
+    """Proxy pool usage stats — requests, successes, failures per proxy."""
+    stats = get_proxy_stats()
+    return {"ok": True, "proxy": stats}
 
 
 @app.get("/debug")

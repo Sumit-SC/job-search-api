@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import random
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -21,6 +23,34 @@ from .models import Job
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# ── Proxy rotation ──────────────────────────────────────────────────
+_proxy_pool: list[str] = []
+
+def _load_proxy_pool() -> list[str]:
+    """Load proxies from JOB_PROXY_URLS env var (comma or newline separated)."""
+    global _proxy_pool
+    if _proxy_pool:
+        return _proxy_pool
+    raw = os.getenv("JOB_PROXY_URLS", "").strip()
+    if not raw:
+        return []
+    _proxy_pool = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
+    if _proxy_pool:
+        logger.info(f"Loaded {len(_proxy_pool)} proxies for rotation")
+    return _proxy_pool
+
+def _get_proxy() -> str | None:
+    """Return a random proxy URL from the pool, or None if no proxies configured."""
+    pool = _load_proxy_pool()
+    return random.choice(pool) if pool else None
+
+def _make_client(**kwargs) -> httpx.AsyncClient:
+    """Create an httpx.AsyncClient with optional proxy rotation."""
+    proxy = _get_proxy()
+    if proxy:
+        kwargs.setdefault("proxy", proxy)
+    return httpx.AsyncClient(**kwargs)
 
 
 async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0, retries: int = 2) -> str:
@@ -152,7 +182,7 @@ async def scrape_greenhouse_company(company_slug: str, days: int = 3, query: str
         return []
     url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with _make_client(timeout=25.0) as client:
             data = await _fetch_json(client, url, timeout=25.0, retries=2)
         if not isinstance(data, dict):
             return []
@@ -202,7 +232,7 @@ async def scrape_lever_company(company_slug: str, days: int = 3, query: str | No
         return []
     url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with _make_client(timeout=25.0) as client:
             data = await _fetch_json(client, url, timeout=25.0, retries=2)
         if not isinstance(data, list):
             return []
@@ -295,7 +325,7 @@ async def scrape_hnrss_jobs(days: int = 3, query: str | None = None) -> List[Job
     """
     url = "https://hnrss.org/jobs"
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with _make_client(timeout=20.0) as client:
             xml = await fetch_text(client, url, timeout=20.0, retries=2)
         if not xml:
             return []
@@ -343,7 +373,7 @@ async def scrape_weworkremotely(days: int = 3, query: str | None = None) -> List
     """
     url = "https://weworkremotely.com/remote-jobs.rss"
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with _make_client(timeout=20.0) as client:
             xml = await fetch_text(client, url, timeout=20.0, retries=2)
         if not xml:
             logger.warning(f"Empty response from {url}")
@@ -395,7 +425,7 @@ async def scrape_jobscollider(days: int = 3, query: str | None = None) -> List[J
     Scrape Jobscollider / RemoteFirstJobs RSS feed.
     """
     url = "https://jobscollider.com/remote-jobs.rss"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -434,7 +464,7 @@ async def scrape_jobscollider_data(days: int = 3, query: str | None = None) -> L
     Data-analytics focused source.
     """
     url = "https://jobscollider.com/remote-data-jobs.rss"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -472,7 +502,7 @@ async def scrape_remoteok(days: int = 3, query: str | None = None) -> List[Job]:
     Scrape RemoteOK RSS feed.
     """
     url = "https://remoteok.com/remote-jobs.rss"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -523,7 +553,7 @@ async def scrape_remotive_api(days: int = 3, query: str | None = None) -> List[J
     all_items: List[dict] = []
     seen_urls: set[str] = set()
 
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         for cat in categories:
             try:
                 resp = await client.get(
@@ -599,7 +629,7 @@ async def scrape_remotive_rss(days: int = 3, query: str | None = None) -> List[J
         "https://remotive.com/remote-jobs/feed/analytics",  # Added analytics category
     ]
     out: List[Job] = []
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         for url in urls:
             xml = await fetch_text(client, url)
             if not xml:
@@ -643,7 +673,7 @@ async def scrape_wellfound(days: int = 3, query: str | None = None) -> List[Job]
         "https://wellfound.com/jobs.rss?keywords=analytics-engineer&remote=true",  # Added analytics engineer
     ]
     out: List[Job] = []
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         for url in urls:
             xml = await fetch_text(client, url)
             if not xml:
@@ -688,7 +718,7 @@ async def scrape_indeed_rss(days: int = 3, query: str | None = None) -> List[Job
         f"https://rss.indeed.com/rss?q=analytics+engineer&l=remote&radius=0",  # Added analytics engineer
     ]
     out: List[Job] = []
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         for url in urls:
             xml = await fetch_text(client, url)
             if not xml:
@@ -726,7 +756,7 @@ async def scrape_remote_co(days: int = 3, query: str | None = None) -> List[Job]
     Scrape Remote.co RSS feed.
     """
     url = "https://remote.co/remote-jobs/feed/"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -764,7 +794,7 @@ async def scrape_jobspresso(days: int = 3, query: str | None = None) -> List[Job
     Scrape Jobspresso RSS feed.
     """
     url = "https://jobspresso.co/remote-jobs/feed/"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -802,7 +832,7 @@ async def scrape_himalayas(days: int = 3, query: str | None = None) -> List[Job]
     Scrape Himalayas RSS feed.
     """
     url = "https://himalayas.app/jobs/feed"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -840,7 +870,7 @@ async def scrape_remotive_data_feed(days: int = 3, query: str | None = None) -> 
     Scrape Remotive Data category RSS feed.
     """
     url = "https://remotive.com/remote-jobs/feed/data"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -878,7 +908,7 @@ async def scrape_remotive_ai_ml_feed(days: int = 3, query: str | None = None) ->
     Scrape Remotive AI/ML category RSS feed.
     """
     url = "https://remotive.com/remote-jobs/feed/ai-ml"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -922,7 +952,7 @@ async def scrape_stackoverflow_jobs(days: int = 3, query: str | None = None) -> 
     ]
     out: List[Job] = []
     seen_urls = set()  # Deduplicate across multiple URLs
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         for url in urls:
             xml = await fetch_text(client, url)
             if not xml:
@@ -970,7 +1000,7 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
     Scrape Authentic Jobs RSS feed.
     """
     url = "https://authenticjobs.com/rss/"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         xml = await fetch_text(client, url)
     if not xml:
         return []
@@ -1012,7 +1042,7 @@ async def scrape_hiring_cafe(days: int = 3, query: str | None = None) -> List[Jo
     """hiring.cafe public JSON API — rich nested data with compensation, skills, seniority."""
     search_q = query or "data analyst"
     url = f"https://hiring.cafe/api/search-jobs?searchQuery={search_q}&workplaceTypes=Remote"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         data = await _fetch_json(client, url, timeout=30.0)
     if not data or not isinstance(data, dict):
         return []
@@ -1063,7 +1093,7 @@ async def scrape_hiring_cafe(days: int = 3, query: str | None = None) -> List[Jo
 async def scrape_arbeitnow(days: int = 3, query: str | None = None) -> List[Job]:
     """Arbeitnow free JSON API — European + remote jobs."""
     url = "https://www.arbeitnow.com/api/job-board-api"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         data = await _fetch_json(client, url, timeout=20.0)
     if not data or not isinstance(data, dict):
         return []
@@ -1102,7 +1132,7 @@ async def scrape_jobicy_api(days: int = 3, query: str | None = None) -> List[Job
     """Jobicy public JSON API v2 — remote jobs with tag search."""
     search_tag = (query or "data analyst").replace(" ", "+")
     url = f"https://jobicy.com/api/v2/remote-jobs?count=50&tag={search_tag}"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         data = await _fetch_json(client, url, timeout=20.0)
     if not data or not isinstance(data, dict):
         return []
@@ -1139,7 +1169,7 @@ async def scrape_jobicy_api(days: int = 3, query: str | None = None) -> List[Job
 async def scrape_workingnomads(days: int = 3, query: str | None = None) -> List[Job]:
     """WorkingNomads public API — curated remote jobs."""
     url = "https://www.workingnomads.com/api/exposed_jobs/"
-    async with httpx.AsyncClient() as client:
+    async with _make_client() as client:
         data = await _fetch_json(client, url, timeout=20.0)
     if not data or not isinstance(data, list):
         return []

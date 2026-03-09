@@ -9,6 +9,9 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import html
 import httpx
 import feedparser

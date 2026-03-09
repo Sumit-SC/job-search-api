@@ -98,20 +98,44 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (jobsContainer) {
         jobsContainer.addEventListener('click', (e) => {
-            const btn = e.target.closest('.job-copy-chatgpt-btn');
-            if (!btn || !lastDisplayedJobs.length) return;
-            const idx = parseInt(btn.getAttribute('data-job-index'), 10);
-            if (isNaN(idx) || idx < 0 || idx >= lastDisplayedJobs.length) return;
-            const job = lastDisplayedJobs[idx];
-            const prompt = buildChatGPTPrepPrompt(job);
-            copyTextToClipboard(prompt).then((copied) => {
-                window.open('https://chat.openai.com/', '_blank', 'noopener');
-                if (copied) {
-                    alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
-                } else {
-                    prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+            const chatBtn = e.target.closest('.job-copy-chatgpt-btn');
+            if (chatBtn && lastDisplayedJobs.length) {
+                const idx = parseInt(chatBtn.getAttribute('data-job-index'), 10);
+                if (!isNaN(idx) && idx >= 0 && idx < lastDisplayedJobs.length) {
+                    const job = lastDisplayedJobs[idx];
+                    const prompt = buildChatGPTPrepPrompt(job);
+                    copyTextToClipboard(prompt).then((copied) => {
+                        window.open('https://chat.openai.com/', '_blank', 'noopener');
+                        if (copied) {
+                            alert('Prompt copied. Paste it in the new ChatGPT tab. The AI will ask about your background first, then run a mock interview based on this JD.');
+                        } else {
+                            window.prompt('Copy this prompt and paste into ChatGPT or Gemini:', prompt);
+                        }
+                    });
                 }
-            });
+                return;
+            }
+
+            const prepBtn = e.target.closest('.job-send-prep-btn');
+            if (prepBtn && lastDisplayedJobs.length) {
+                const idx = parseInt(prepBtn.getAttribute('data-job-index'), 10);
+                if (!isNaN(idx) && idx >= 0 && idx < lastDisplayedJobs.length) {
+                    const job = lastDisplayedJobs[idx];
+                    let desc = String(job.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (desc.length > 1500) desc = desc.slice(0, 1500) + '...';
+                    const panel = document.getElementById('prep-flyout-panel');
+                    const iframe = document.getElementById('prep-flyout-iframe');
+                    if (panel) {
+                        panel.classList.add('prep-flyout-open');
+                        document.body.style.overflow = 'hidden';
+                        const prepUrl = 'interview-prep.html?role=' + encodeURIComponent(job.title || '') + '&company=' + encodeURIComponent(job.company || '') + '&jd=' + encodeURIComponent(desc);
+                        if (iframe) iframe.src = prepUrl;
+                    } else {
+                        window.open('interview-prep.html?role=' + encodeURIComponent(job.title || '') + '&company=' + encodeURIComponent(job.company || '') + '&jd=' + encodeURIComponent(desc), '_blank');
+                    }
+                }
+                return;
+            }
         });
     }
 });
@@ -532,6 +556,7 @@ function createJobCard(job, index) {
                 ${job.visa_sponsorship ? `<span class="job-meta-item">✈️ Visa Sponsorship</span>` : ''}
                 ${job.job_type ? `<span class="job-meta-item">📋 ${escapeHtml(job.job_type)}</span>` : ''}
                 <a href="interview-prep.html?role=${encodeURIComponent(job.title || '')}&company=${encodeURIComponent(job.company || '')}" class="job-meta-item job-prep-link" title="Interview prep for this role">🎯 Prep</a>
+                <button type="button" class="job-meta-item job-send-prep-btn" data-job-index="${dataIndex}" title="Send JD to Interview Prep flyout for mock questions">🎤 Interview Prep</button>
                 <button type="button" class="job-meta-item job-copy-chatgpt-btn" data-job-index="${dataIndex}" title="Copy JD + prompt and open ChatGPT/Gemini">📋 Copy for ChatGPT</button>
             </div>
         </div>

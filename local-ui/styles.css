@@ -1142,7 +1142,8 @@ a.btn {
 }
 .job-meta-item.job-prep-link:hover { text-decoration: underline; }
 
-.job-meta-item.job-copy-chatgpt-btn {
+.job-meta-item.job-copy-chatgpt-btn,
+.job-meta-item.job-send-prep-btn {
     border: none;
     background: transparent;
     cursor: pointer;
@@ -1150,7 +1151,14 @@ a.btn {
     font: inherit;
     text-decoration: none;
 }
-.job-meta-item.job-copy-chatgpt-btn:hover { text-decoration: underline; }
+.job-meta-item.job-send-prep-btn {
+    color: #d97706;
+}
+[data-theme="dark"] .job-meta-item.job-send-prep-btn {
+    color: #fbbf24;
+}
+.job-meta-item.job-copy-chatgpt-btn:hover,
+.job-meta-item.job-send-prep-btn:hover { text-decoration: underline; }
 
 /* Filter bar */
 .filter-bar {

@@ -321,11 +321,12 @@
         sendToChat('Quick tips for my interview prep (please help me expand on these):\n• ' + text);
     }
 
-    // --- URL params (e.g. from "Prep for this" on a job card) ---
+    // --- URL params (e.g. from "Prep for this" or "Interview Prep" on a job card) ---
     function applyUrlParams() {
         var params = new URLSearchParams(window.location.search);
         var role = params.get('role') || params.get('title') || params.get('q');
         var company = params.get('company');
+        var jd = params.get('jd');
         if (role) {
             var roleEl = document.getElementById('prep-role');
             if (roleEl) roleEl.value = decodeURIComponent(role);
@@ -334,6 +335,10 @@
             var companyEl = document.getElementById('prep-company');
             if (companyEl) companyEl.value = decodeURIComponent(company);
         }
+        if (jd) {
+            var jdEl = document.getElementById('prep-jd-paste');
+            if (jdEl) jdEl.value = decodeURIComponent(jd);
+        }
         saveRole(
             document.getElementById('prep-role') && document.getElementById('prep-role').value,
             document.getElementById('prep-company') && document.getElementById('prep-company').value,
@@ -341,6 +346,10 @@
         );
         updateAIPromptText();
         renderTips();
+        if (jd) {
+            var mockSection = document.querySelector('.prep-mock');
+            if (mockSection) mockSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 
     // --- Init ---

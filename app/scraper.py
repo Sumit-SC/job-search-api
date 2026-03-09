@@ -680,10 +680,9 @@ async def scrape_remotive_rss(days: int = 3, query: str | None = None) -> List[J
     Scrape Remotive RSS feed - expanded with more category feeds.
     """
     urls = [
-        "https://remotive.com/feed",
+        "https://remotive.com/remote-jobs/feed",
         "https://remotive.com/remote-jobs/feed/data",
         "https://remotive.com/remote-jobs/feed/ai-ml",
-        "https://remotive.com/remote-jobs/feed/analytics",  # Added analytics category
     ]
     out: List[Job] = []
     async with _make_client() as client:
@@ -813,8 +812,8 @@ async def scrape_remote_co(days: int = 3, query: str | None = None) -> List[Job]
     Scrape Remote.co RSS feed.
     """
     url = "https://remote.co/remote-jobs/feed/"
-    async with _make_client() as client:
-        xml = await fetch_text(client, url)
+    async with _make_client(timeout=10.0) as client:
+        xml = await fetch_text(client, url, timeout=10.0, retries=1)
     if not xml:
         return []
     feed = feedparser.parse(xml)
@@ -885,41 +884,50 @@ async def scrape_jobspresso(days: int = 3, query: str | None = None) -> List[Job
 
 
 async def scrape_himalayas(days: int = 3, query: str | None = None) -> List[Job]:
-    """
-    Scrape Himalayas RSS feed.
-    """
-    url = "https://himalayas.app/jobs/feed"
-    async with _make_client() as client:
-        xml = await fetch_text(client, url)
-    if not xml:
+    """Scrape Himalayas JSON API (himalayas.app/jobs/api)."""
+    url = "https://himalayas.app/jobs/api"
+    try:
+        async with _make_client(timeout=20.0) as client:
+            data = await _fetch_json(client, url, timeout=20.0, retries=1)
+        if not isinstance(data, dict):
+            return []
+        out: List[Job] = []
+        for item in data.get("jobs", []) or []:
+            title = (item.get("title") or "").strip()
+            link = (item.get("applicationLink") or item.get("url") or "").strip()
+            company = (item.get("companyName") or "").strip()
+            location = (item.get("location") or "Remote").strip()
+            desc = (item.get("description") or item.get("excerpt") or "")[:500]
+            pub = item.get("pubDate") or item.get("publishedDate") or ""
+            dt = _parse_date(str(pub)) if pub else None
+            if not _within_days(dt, days):
+                continue
+            if not _matches_query(title, desc, query):
+                continue
+            if not link:
+                continue
+            sal_min = item.get("minSalary")
+            sal_max = item.get("maxSalary")
+            currency = item.get("currency") or None
+            out.append(Job(
+                id=f"himalayas_{hash(link)}",
+                title=title,
+                company=company or "Unknown",
+                location=location,
+                url=link,
+                description=desc,
+                source="himalayas",
+                date=dt,
+                salary_min=sal_min,
+                salary_max=sal_max,
+                currency=currency,
+                tags=["api"],
+            ))
+        logger.info(f"Scraped {len(out)} jobs from himalayas")
+        return out
+    except Exception as e:
+        logger.error(f"Error scraping himalayas: {e}")
         return []
-    feed = feedparser.parse(xml)
-    out: List[Job] = []
-    for entry in feed.entries:
-        title = getattr(entry, "title", "") or ""
-        link = getattr(entry, "link", "") or ""
-        summary = getattr(entry, "summary", "") or ""
-        published = getattr(entry, "published", "") or ""
-        dt = _parse_date(published)
-        if not _within_days(dt, days):
-            continue
-        if not _matches_query(title, summary, query):
-            continue
-        if not link:
-            continue
-        job = Job(
-            id=f"himalayas_{hash(link)}",
-            title=title,
-            company="Unknown",
-            location="Remote",
-            url=link,
-            description=summary,
-            source="himalayas",
-            date=dt,
-            tags=["rss"],
-        )
-        out.append(job)
-    return out
 
 
 async def scrape_remotive_data_feed(days: int = 3, query: str | None = None) -> List[Job]:
@@ -1099,8 +1107,8 @@ async def scrape_hiring_cafe(days: int = 3, query: str | None = None) -> List[Jo
     """hiring.cafe public JSON API — rich nested data with compensation, skills, seniority."""
     search_q = query or "data analyst"
     url = f"https://hiring.cafe/api/search-jobs?searchQuery={search_q}&workplaceTypes=Remote"
-    async with _make_client() as client:
-        data = await _fetch_json(client, url, timeout=30.0)
+    async with _make_client(timeout=10.0) as client:
+        data = await _fetch_json(client, url, timeout=10.0, retries=1)
     if not data or not isinstance(data, dict):
         return []
     results = data.get("results", [])
@@ -2774,20 +2782,17 @@ SCRAPER_REGISTRY = {
     "remotive_rss": scrape_remotive_rss,
     "remotive_data": scrape_remotive_data_feed,
     "remotive_ai_ml": scrape_remotive_ai_ml_feed,
-    "wellfound": scrape_wellfound,
-    "indeed": scrape_indeed_rss,
     "remote_co": scrape_remote_co,
     "jobspresso": scrape_jobspresso,
     "himalayas": scrape_himalayas,
     "authentic_jobs": scrape_authentic_jobs,
-    "stackoverflow": scrape_stackoverflow_jobs,
     "hiring_cafe": scrape_hiring_cafe,
     "arbeitnow": scrape_arbeitnow,
     "jobicy": scrape_jobicy_api,
     "workingnomads": scrape_workingnomads,
     "justremote": scrape_justremote,
-    "dailyremote": scrape_dailyremote,
-    "remoteindian": scrape_remoteindian,
+    # Removed (dead): wellfound (403), indeed_rss (404), stackoverflow (403),
+    #                  dailyremote (404), remoteindian (404)
 }
 
 

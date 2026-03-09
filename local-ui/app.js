@@ -177,6 +177,7 @@ refreshBtn.addEventListener('click', async () => {
     const query = document.getElementById('refresh-query').value.trim() || 'data analyst';
     const days = parseInt(document.getElementById('refresh-days').value) || 3;
     const mode = getSourceMode();
+    const sourcesRaw = (document.getElementById('refresh-sources')?.value || '').trim();
 
     refreshBtn.disabled = true;
     refreshBtn.querySelector('.btn-text').style.display = 'none';
@@ -200,6 +201,10 @@ refreshBtn.addEventListener('click', async () => {
         } else {
             params.append('headless', '1');
             params.append('mode', 'all');
+        }
+
+        if (sourcesRaw) {
+            params.append('sources', sourcesRaw);
         }
 
         const response = await fetch(`${API_BASE_URL}/refresh?${params}`, {

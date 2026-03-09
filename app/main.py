@@ -621,14 +621,16 @@ async def refresh_jobs(
     days: int = Query(3, ge=1, le=30),
     headless: Optional[bool] = Query(None, description="Include headless scrapers (default: from ENABLE_HEADLESS env). Use headless=0 for quick RSS-only refresh."),
     mode: Optional[str] = Query(None, description="Source mode: 'rss', 'headless', or 'all' (default)."),
+    sources: Optional[str] = Query(None, description="Comma-separated source IDs to scrape (e.g. 'remoteok,remotive,hiring_cafe'). If empty, scrapes all."),
     include_stats: bool = Query(False, description="Include system resource stats in response"),
 ) -> JobsResponse:
     normalized_mode = (mode or "all").lower()
     if normalized_mode not in ("rss", "headless", "all"):
         normalized_mode = "all"
 
+    source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
     enable_headless = headless if headless is not None else True
-    jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode)
+    jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
     save_jobs(jobs)
     
     response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
@@ -883,52 +885,14 @@ async def rssjobs_proxy(
 @app.get("/debug")
 async def debug_scrapers() -> dict:
     """
-    Debug endpoint: test all 14 RSS/HTTP scrapers. Fast; no headless.
+    Debug endpoint: test all RSS/HTTP/API scrapers. Fast; no headless.
     """
     import asyncio
-    from .scraper import (
-        scrape_weworkremotely,
-        scrape_jobscollider,
-        scrape_jobscollider_data,
-        scrape_greenhouse,
-        scrape_lever,
-        scrape_remoteok,
-        scrape_hnrss_jobs,
-        scrape_remotive_api,
-        scrape_remotive_rss,
-        scrape_remotive_data_feed,
-        scrape_remotive_ai_ml_feed,
-        scrape_wellfound,
-        scrape_indeed_rss,
-        scrape_remote_co,
-        scrape_jobspresso,
-        scrape_himalayas,
-        scrape_authentic_jobs,
-        scrape_stackoverflow_jobs,
-    )
+    from .scraper import SCRAPER_REGISTRY
     results = {}
     test_query = "data analyst"
     test_days = 7
-    scrapers = {
-        "greenhouse": scrape_greenhouse,
-        "lever": scrape_lever,
-        "weworkremotely": scrape_weworkremotely,
-        "jobscollider": scrape_jobscollider,
-        "jobscollider_data": scrape_jobscollider_data,
-        "remoteok": scrape_remoteok,
-        "hnrss_jobs": scrape_hnrss_jobs,
-        "remotive_api": scrape_remotive_api,
-        "remotive_rss": scrape_remotive_rss,
-        "remotive_data": scrape_remotive_data_feed,
-        "remotive_ai_ml": scrape_remotive_ai_ml_feed,
-        "wellfound": scrape_wellfound,
-        "indeed_rss": scrape_indeed_rss,
-        "remote_co": scrape_remote_co,
-        "jobspresso": scrape_jobspresso,
-        "himalayas": scrape_himalayas,
-        "authentic_jobs": scrape_authentic_jobs,
-        "stackoverflow": scrape_stackoverflow_jobs,
-    }
+    scrapers = SCRAPER_REGISTRY
     for name, scraper_func in scrapers.items():
         try:
             # Add timeout per scraper (30 seconds)

@@ -3,91 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Custom Scrapers — Job Fetcher</title>
+<title>Data Domain Job Fetcher</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#f8fafc;--card:#fff;--text:#1e293b;--text2:#64748b;--border:#e2e8f0;--pri:#2563eb;--pri-h:#1d4ed8;--ok:#10b981;--err:#ef4444;--warn:#f59e0b;--r:8px;--sh:0 1px 3px rgba(0,0,0,.08)}
+:root{--bg:#f8fafc;--card:#fff;--text:#1e293b;--text2:#64748b;--border:#e2e8f0;--pri:#6366f1;--pri-h:#4f46e5;--ok:#10b981;--err:#ef4444;--warn:#f59e0b;--r:10px;--sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04)}
 [data-theme="dark"]{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--text2:#94a3b8;--border:#334155;--sh:0 1px 3px rgba(0,0,0,.3)}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-.container{max-width:1200px;margin:0 auto;padding:16px}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px}
-header h1{font-size:1.3rem;font-weight:700}
-header .sub{color:var(--text2);font-size:.85rem}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1440px;margin:0 auto;padding:16px 20px}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);margin-bottom:16px}
+header h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,var(--pri),#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header .sub{color:var(--text2);font-size:.82rem;margin-top:2px}
+.hdr-actions{display:flex;gap:8px;align-items:center}
 .theme-btn{background:none;border:1px solid var(--border);border-radius:var(--r);padding:6px 10px;cursor:pointer;font-size:1rem}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--sh);margin-bottom:16px}
-.card h2{font-size:1rem;margin-bottom:10px;color:var(--text)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--sh);margin-bottom:14px}
+.card h2{font-size:.95rem;margin-bottom:10px;color:var(--text);font-weight:700}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
 .field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:.75rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
-input[type="text"],input[type="number"],select{padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:.9rem;background:var(--card);color:var(--text);min-width:140px}
-input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.field label{font-size:.7rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+input[type="text"],input[type="number"],select{padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:.88rem;background:var(--card);color:var(--text);min-width:120px;transition:border .15s,box-shadow .15s}
+input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px rgba(99,102,241,.12)}
 .btn{padding:8px 18px;border:none;border-radius:var(--r);font-size:.85rem;font-weight:600;cursor:pointer;transition:.15s}
 .btn-pri{background:var(--pri);color:#fff}.btn-pri:hover{background:var(--pri-h)}
 .btn-sec{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-sec:hover{background:var(--border)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.sources-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;margin:10px 0}
-.src-chip{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:.8rem;cursor:pointer;transition:.15s;user-select:none}
-.src-chip:hover{border-color:var(--pri)}
-.src-chip.active{background:rgba(37,99,235,.08);border-color:var(--pri);color:var(--pri)}
-.src-chip .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.dot-rss{background:var(--warn)}.dot-api{background:var(--ok)}
-.src-chip .count{margin-left:auto;font-weight:700;font-size:.75rem}
-.stats{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
-.stat{text-align:center}.stat .num{font-size:1.4rem;font-weight:700;color:var(--pri)}.stat .lbl{font-size:.7rem;color:var(--text2);text-transform:uppercase}
+.btn-sm{padding:4px 10px;font-size:.72rem;border-radius:6px}
+
+/* Sources grid */
+.sources-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:5px;margin:8px 0}
+.src-chip{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;cursor:pointer;transition:.15s;user-select:none}
+.src-chip:hover{border-color:var(--pri);background:rgba(99,102,241,.03)}
+.src-chip.active{background:rgba(99,102,241,.07);border-color:var(--pri);color:var(--pri);font-weight:600}
+.src-chip .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot-rss{background:var(--warn)}.dot-api{background:var(--ok)}.dot-ats{background:#8b5cf6}
+.src-chip .count{margin-left:auto;font-weight:700;font-size:.72rem;opacity:.7}
+
+/* Category quick filter for sources */
+.cat-pills{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.cat-pill{padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-size:.72rem;cursor:pointer;font-weight:600;transition:.15s;user-select:none;color:var(--text2)}
+.cat-pill:hover,.cat-pill.active{background:var(--pri);color:#fff;border-color:var(--pri)}
+
+/* Stats */
+.stats{display:flex;gap:20px;flex-wrap:wrap;margin:8px 0}
+.stat{text-align:center}.stat .num{font-size:1.5rem;font-weight:800;color:var(--pri)}.stat .lbl{font-size:.68rem;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+
+/* Role tag pills */
+.role-tags-bar{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.role-pill{padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-size:.72rem;cursor:pointer;font-weight:600;transition:.15s;user-select:none;color:var(--text2)}
+.role-pill:hover,.role-pill.active{border-color:var(--pri);color:var(--pri);background:rgba(99,102,241,.07)}
+.role-pill .pill-count{font-weight:700;opacity:.6;margin-left:3px;font-size:.65rem}
+
+/* Toolbar */
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .toolbar input[type="text"]{flex:1;min-width:200px}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text2);font-size:.75rem;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;user-select:none;white-space:nowrap}
+
+/* Table */
+.table-wrap{overflow-x:auto;max-height:70vh;overflow-y:auto}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:.84rem}
+thead{position:sticky;top:0;z-index:2}
+th{text-align:left;padding:10px 10px;border-bottom:2px solid var(--border);color:var(--text2);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none;white-space:nowrap;background:var(--card)}
 th:hover{color:var(--pri)}
-th .arrow{font-size:.65rem;margin-left:3px}
-td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
-tr:hover{background:rgba(37,99,235,.03)}
-.job-title{font-weight:600;color:var(--pri);text-decoration:none;display:block;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th .arrow{font-size:.6rem;margin-left:3px;opacity:.6}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:hover td{background:rgba(99,102,241,.03)}
+.job-title{font-weight:600;color:var(--pri);text-decoration:none;display:block;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .job-title:hover{text-decoration:underline}
-.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:600;background:rgba(37,99,235,.08);color:var(--pri)}
+.tag{display:inline-block;padding:2px 7px;border-radius:5px;font-size:.68rem;font-weight:600;margin:1px 2px}
+.tag-role{background:rgba(99,102,241,.08);color:var(--pri)}
+.tag-seniority{background:rgba(139,92,246,.08);color:#8b5cf6}
 .tag-ok{background:rgba(16,185,129,.1);color:var(--ok)}
 .tag-warn{background:rgba(245,158,11,.1);color:var(--warn)}
+.tag-src{background:rgba(99,102,241,.05);color:var(--text2);font-size:.66rem}
 .empty{text-align:center;padding:40px;color:var(--text2)}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--pri);border-radius:50%;animation:spin .6s linear infinite;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .progress{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin:8px 0}
-.progress-bar{height:100%;background:var(--pri);transition:width .3s}
-@media(max-width:768px){.sources-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.row{flex-direction:column}}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--pri),#8b5cf6);transition:width .3s}
+.time-ago{font-size:.75rem;color:var(--text2);white-space:nowrap}
+.export-btn{font-size:.72rem}
+
+@media(max-width:768px){
+  .sources-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  .row{flex-direction:column}
+  .toolbar{flex-direction:column}
+  .toolbar input[type="text"]{min-width:100%}
+  header{flex-direction:column;gap:8px;text-align:center}
+}
 </style>
 </head>
 <body>
 <div class="container">
   <header>
     <div>
-      <h1>Custom Scrapers — Job Fetcher</h1>
-      <p class="sub">22 sources · RSS + JSON APIs · Remote & Data/Analyst roles</p>
+      <h1>Data Domain Job Fetcher</h1>
+      <p class="sub" id="subTitle">Loading sources...</p>
     </div>
-    <button class="theme-btn" id="themeBtn" title="Toggle theme">🌙</button>
+    <div class="hdr-actions">
+      <button class="btn btn-sec export-btn" id="exportBtn" title="Export CSV" disabled>Export CSV</button>
+      <button class="theme-btn" id="themeBtn" title="Toggle theme">🌙</button>
+    </div>
   </header>
 
   <div class="card">
     <h2>Search</h2>
     <div class="row">
-      <div class="field"><label>Keywords</label><input type="text" id="queryInput" value="analyst" placeholder="data analyst, BI..."></div>
-      <div class="field"><label>Max per source</label><input type="number" id="limitInput" value="50" min="5" max="200" step="5"></div>
+      <div class="field"><label>Keywords</label><input type="text" id="queryInput" value="analyst" placeholder="data analyst, BI, scientist..."></div>
+      <div class="field"><label>Max/source</label><input type="number" id="limitInput" value="80" min="5" max="200" step="5"></div>
       <div class="field" style="justify-content:end">
         <div class="row" style="gap:6px">
-          <button class="btn btn-pri" id="fetchBtn">Fetch Jobs</button>
+          <button class="btn btn-pri" id="fetchBtn">Fetch All</button>
           <button class="btn btn-sec" id="fetchSelectedBtn">Fetch Selected</button>
+          <button class="btn btn-sec" id="fetchDataBtn" title="Quick fetch from data-focused sources only">Data Only</button>
         </div>
       </div>
     </div>
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
       <h2>Sources</h2>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sec" id="selectAllBtn" style="padding:4px 10px;font-size:.75rem">Select All</button>
-        <button class="btn btn-sec" id="selectNoneBtn" style="padding:4px 10px;font-size:.75rem">None</button>
-        <button class="btn btn-sec" id="selectWorkingBtn" style="padding:4px 10px;font-size:.75rem">Working Only</button>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <button class="btn btn-sec btn-sm" id="selectAllBtn">All</button>
+        <button class="btn btn-sec btn-sm" id="selectNoneBtn">None</button>
+        <button class="btn btn-sec btn-sm" id="selectWorkingBtn">Working</button>
+        <button class="btn btn-sec btn-sm" id="selectDataBtn">Data Sources</button>
       </div>
     </div>
+    <div class="cat-pills" id="catPills"></div>
     <div class="sources-grid" id="sourcesGrid"></div>
     <div class="progress" id="progressWrap" style="display:none"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
   </div>
@@ -96,27 +137,42 @@ tr:hover{background:rgba(37,99,235,.03)}
     <div class="stats" id="statsRow"></div>
   </div>
 
+  <div class="card" id="roleTagsCard" style="display:none">
+    <h2>Filter by Role</h2>
+    <div class="role-tags-bar" id="roleTagsBar"></div>
+  </div>
+
   <div class="card">
     <div class="toolbar">
-      <input type="text" id="filterInput" placeholder="Filter results by title, company, source...">
+      <input type="text" id="filterInput" placeholder="Search by title, company, location, tag...">
       <select id="sourceFilter"><option value="">All sources</option></select>
-      <span id="countLabel" style="font-size:.8rem;color:var(--text2)"></span>
+      <select id="seniorityFilter"><option value="">All levels</option></select>
+      <select id="sortSelect">
+        <option value="date_desc">Newest first</option>
+        <option value="date_asc">Oldest first</option>
+        <option value="title_asc">Title A-Z</option>
+        <option value="title_desc">Title Z-A</option>
+        <option value="company_asc">Company A-Z</option>
+        <option value="source_asc">Source A-Z</option>
+      </select>
+      <span id="countLabel" style="font-size:.78rem;color:var(--text2);white-space:nowrap"></span>
     </div>
-    <div style="overflow-x:auto">
+    <div class="table-wrap">
       <table id="jobsTable">
         <thead>
           <tr>
             <th data-col="title">Title <span class="arrow"></span></th>
+            <th data-col="role_tags">Tags <span class="arrow"></span></th>
             <th data-col="company">Company <span class="arrow"></span></th>
             <th data-col="location">Location <span class="arrow"></span></th>
             <th data-col="source">Source <span class="arrow"></span></th>
-            <th data-col="date">Date <span class="arrow"></span></th>
+            <th data-col="date">Date <span class="arrow">▼</span></th>
           </tr>
         </thead>
         <tbody id="jobsBody"></tbody>
       </table>
     </div>
-    <div class="empty" id="emptyMsg">Click <strong>Fetch Jobs</strong> to load from all sources.</div>
+    <div class="empty" id="emptyMsg">Click <strong>Fetch All</strong> or <strong>Data Only</strong> to load jobs.</div>
   </div>
 </div>
 
@@ -130,20 +186,45 @@ let sortCol = "date";
 let sortDir = -1;
 let selectedSources = new Set();
 const workingSources = new Set();
+let activeRoleTags = new Set();
 
-// Theme
+/* ── Theme ────────────────────────────────── */
 const themeBtn = $("#themeBtn");
-const savedTheme = localStorage.getItem("theme") || "light";
+const savedTheme = localStorage.getItem("jf_theme") || "light";
 document.documentElement.setAttribute("data-theme", savedTheme);
 themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
 themeBtn.addEventListener("click", () => {
   const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
-  localStorage.setItem("theme", next);
+  localStorage.setItem("jf_theme", next);
   themeBtn.textContent = next === "dark" ? "☀️" : "🌙";
 });
 
-// Load sources
+/* ── Time helpers ──────────────────────────── */
+function timeAgo(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return isoStr.slice(0, 10);
+  const now = Date.now();
+  const diff = now - d.getTime();
+  if (diff < 0) return "just now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
+}
+
+function fullDate(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return isoStr;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/* ── Load sources ──────────────────────────── */
 async function loadSources() {
   try {
     const r = await fetch("/api/sources");
@@ -151,18 +232,24 @@ async function loadSources() {
     renderSources();
     selectedSources = new Set(Object.keys(sources));
     updateChips();
+    const total = Object.keys(sources).length;
+    const dataSources = Object.entries(sources).filter(([_, c]) => c.category === "data").length;
+    $("#subTitle").textContent = `${total} sources · ${dataSources} data-focused · RSS + APIs + ATS boards`;
   } catch(e) { console.error("Failed to load sources", e); }
 }
 
 function renderSources() {
   const grid = $("#sourcesGrid");
   grid.innerHTML = "";
+  const categories = new Set();
   for (const [id, cfg] of Object.entries(sources)) {
+    categories.add(cfg.category);
     const chip = document.createElement("div");
     chip.className = "src-chip active";
     chip.dataset.id = id;
-    chip.innerHTML = `<span class="dot dot-${cfg.type === 'rss' ? 'rss' : 'api'}"></span>
-      <span>${cfg.name}</span>
+    chip.dataset.cat = cfg.category;
+    chip.innerHTML = `<span class="dot dot-${cfg.type}"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cfg.name}</span>
       <span class="count" data-count="${id}"></span>`;
     chip.addEventListener("click", () => {
       if (selectedSources.has(id)) selectedSources.delete(id);
@@ -171,6 +258,37 @@ function renderSources() {
     });
     grid.appendChild(chip);
   }
+  renderCatPills([...categories].sort());
+}
+
+function renderCatPills(cats) {
+  const bar = $("#catPills");
+  bar.innerHTML = "";
+  const allPill = document.createElement("span");
+  allPill.className = "cat-pill active";
+  allPill.textContent = "All";
+  allPill.addEventListener("click", () => {
+    selectedSources = new Set(Object.keys(sources));
+    updateChips();
+    $$(".cat-pill").forEach(p => p.classList.remove("active"));
+    allPill.classList.add("active");
+  });
+  bar.appendChild(allPill);
+
+  cats.forEach(cat => {
+    const pill = document.createElement("span");
+    pill.className = "cat-pill";
+    pill.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+    pill.addEventListener("click", () => {
+      selectedSources = new Set(
+        Object.entries(sources).filter(([_, c]) => c.category === cat).map(([id]) => id)
+      );
+      updateChips();
+      $$(".cat-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+    });
+    bar.appendChild(pill);
+  });
 }
 
 function updateChips() {
@@ -182,33 +300,45 @@ function updateChips() {
 $("#selectAllBtn").addEventListener("click", () => { selectedSources = new Set(Object.keys(sources)); updateChips(); });
 $("#selectNoneBtn").addEventListener("click", () => { selectedSources.clear(); updateChips(); });
 $("#selectWorkingBtn").addEventListener("click", () => { selectedSources = new Set(workingSources); updateChips(); });
+$("#selectDataBtn").addEventListener("click", () => {
+  selectedSources = new Set(
+    Object.entries(sources).filter(([_, c]) => c.category === "data").map(([id]) => id)
+  );
+  updateChips();
+});
 
-// Fetch
+/* ── Fetch ──────────────────────────────────── */
 async function fetchJobs(sourceIds) {
   const q = $("#queryInput").value.trim() || "analyst";
-  const limit = $("#limitInput").value || 50;
+  const limit = $("#limitInput").value || 80;
   const ids = sourceIds.join(",");
 
   $("#fetchBtn").disabled = true;
   $("#fetchSelectedBtn").disabled = true;
+  $("#fetchDataBtn").disabled = true;
   $("#progressWrap").style.display = "block";
-  $("#progressBar").style.width = "30%";
+  $("#progressBar").style.width = "15%";
   $("#emptyMsg").style.display = "none";
+
+  let pct = 15;
+  const ticker = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 8, 88);
+    $("#progressBar").style.width = pct + "%";
+  }, 600);
 
   try {
     const r = await fetch(`/api/fetch?sources=${ids}&q=${encodeURIComponent(q)}&limit=${limit}`);
-    $("#progressBar").style.width = "90%";
+    clearInterval(ticker);
+    $("#progressBar").style.width = "95%";
     const data = await r.json();
     allJobs = data.jobs || [];
 
-    // Update source counts
     for (const [sid, st] of Object.entries(data.sources || {})) {
       const el = $(`[data-count="${sid}"]`);
       if (el) el.textContent = st.count || "";
       if (st.count > 0) workingSources.add(sid);
     }
 
-    // Update stats
     const totalSources = Object.keys(data.sources || {}).length;
     const workingCount = Object.values(data.sources || {}).filter(s => s.count > 0).length;
     const totalMs = Object.values(data.sources || {}).reduce((a, s) => a + (s.ms || 0), 0);
@@ -217,37 +347,101 @@ async function fetchJobs(sourceIds) {
       <div class="stat"><div class="num">${data.total.toLocaleString()}</div><div class="lbl">Jobs Found</div></div>
       <div class="stat"><div class="num">${workingCount}/${totalSources}</div><div class="lbl">Sources OK</div></div>
       <div class="stat"><div class="num">${(totalMs/1000).toFixed(1)}s</div><div class="lbl">Total Time</div></div>
+      ${data.duplicates_removed ? `<div class="stat"><div class="num">${data.duplicates_removed}</div><div class="lbl">Dupes Removed</div></div>` : ""}
     `;
 
-    // Update source filter dropdown
+    // Source filter dropdown
     const sf = $("#sourceFilter");
     sf.innerHTML = '<option value="">All sources</option>';
     const srcNames = [...new Set(allJobs.map(j => j.source))].sort();
     srcNames.forEach(n => { const o = document.createElement("option"); o.value = n; o.textContent = n; sf.appendChild(o); });
 
+    // Seniority filter
+    const senF = $("#seniorityFilter");
+    senF.innerHTML = '<option value="">All levels</option>';
+    const levels = [...new Set(allJobs.map(j => j.seniority).filter(Boolean))].sort();
+    levels.forEach(l => { const o = document.createElement("option"); o.value = l; o.textContent = l; senF.appendChild(o); });
+
+    // Role tag pills
+    buildRoleTagPills(data.role_tags_found || []);
+
+    $("#exportBtn").disabled = false;
     renderTable();
   } catch(e) {
+    clearInterval(ticker);
     console.error(e);
     alert("Fetch failed: " + e.message);
   } finally {
     $("#fetchBtn").disabled = false;
     $("#fetchSelectedBtn").disabled = false;
+    $("#fetchDataBtn").disabled = false;
     $("#progressBar").style.width = "100%";
     setTimeout(() => { $("#progressWrap").style.display = "none"; }, 400);
   }
 }
 
+function buildRoleTagPills(tags) {
+  if (!tags.length) { $("#roleTagsCard").style.display = "none"; return; }
+  $("#roleTagsCard").style.display = "block";
+  const bar = $("#roleTagsBar");
+  bar.innerHTML = "";
+  activeRoleTags.clear();
+
+  const allPill = document.createElement("span");
+  allPill.className = "role-pill active";
+  allPill.dataset.role = "__all__";
+  allPill.textContent = "All Roles";
+  allPill.addEventListener("click", () => {
+    activeRoleTags.clear();
+    $$(".role-pill").forEach(p => p.classList.remove("active"));
+    allPill.classList.add("active");
+    renderTable();
+  });
+  bar.appendChild(allPill);
+
+  tags.forEach(tag => {
+    const count = allJobs.filter(j => (j.role_tags || []).includes(tag)).length;
+    const pill = document.createElement("span");
+    pill.className = "role-pill";
+    pill.dataset.role = tag;
+    pill.innerHTML = `${tag} <span class="pill-count">${count}</span>`;
+    pill.addEventListener("click", () => {
+      if (activeRoleTags.has(tag)) {
+        activeRoleTags.delete(tag);
+        pill.classList.remove("active");
+      } else {
+        activeRoleTags.add(tag);
+        pill.classList.add("active");
+      }
+      $('[data-role="__all__"]').classList.toggle("active", activeRoleTags.size === 0);
+      renderTable();
+    });
+    bar.appendChild(pill);
+  });
+}
+
 $("#fetchBtn").addEventListener("click", () => fetchJobs(Object.keys(sources)));
 $("#fetchSelectedBtn").addEventListener("click", () => fetchJobs([...selectedSources]));
+$("#fetchDataBtn").addEventListener("click", () => {
+  const dataIds = Object.entries(sources).filter(([_, c]) => c.category === "data").map(([id]) => id);
+  if (dataIds.length === 0) { alert("No data-focused sources found"); return; }
+  fetchJobs(dataIds);
+});
 
-// Table rendering
+/* ── Table rendering ───────────────────────── */
 function getFiltered() {
   const q = ($("#filterInput").value || "").toLowerCase();
   const src = $("#sourceFilter").value;
+  const sen = $("#seniorityFilter").value;
   return allJobs.filter(j => {
     if (src && j.source !== src) return false;
+    if (sen && j.seniority !== sen) return false;
+    if (activeRoleTags.size > 0) {
+      const jTags = j.role_tags || [];
+      if (!jTags.some(t => activeRoleTags.has(t))) return false;
+    }
     if (q) {
-      const hay = `${j.title} ${j.company} ${j.source} ${j.location} ${j.seniority || ""} ${j.skills || ""}`.toLowerCase();
+      const hay = `${j.title} ${j.company} ${j.source} ${j.location} ${j.seniority || ""} ${(j.role_tags||[]).join(" ")} ${j.skills || ""} ${j.compensation || ""}`.toLowerCase();
       return hay.includes(q);
     }
     return true;
@@ -256,39 +450,48 @@ function getFiltered() {
 
 function renderTable() {
   let jobs = getFiltered();
+  const sel = $("#sortSelect").value;
+  const [col, dir] = sel.split("_");
+  const dirMul = dir === "desc" ? -1 : 1;
 
-  // Sort
   jobs.sort((a, b) => {
-    let va = (a[sortCol] || "").toString().toLowerCase();
-    let vb = (b[sortCol] || "").toString().toLowerCase();
-    if (sortCol === "date") {
-      va = new Date(va || 0).getTime() || 0;
-      vb = new Date(vb || 0).getTime() || 0;
-      return (va - vb) * sortDir;
+    if (col === "date") {
+      const da = new Date(a.date_iso || a.date || 0).getTime() || 0;
+      const db = new Date(b.date_iso || b.date || 0).getTime() || 0;
+      return (da - db) * dirMul;
     }
-    return va.localeCompare(vb) * sortDir;
+    const va = (a[col] || "").toString().toLowerCase();
+    const vb = (b[col] || "").toString().toLowerCase();
+    return va.localeCompare(vb) * dirMul;
   });
 
-  // Update arrows
+  // Also sort via th clicks
   $$("th[data-col]").forEach(th => {
     const arrow = th.querySelector(".arrow");
-    if (th.dataset.col === sortCol) arrow.textContent = sortDir > 0 ? "▲" : "▼";
+    if (th.dataset.col === col) arrow.textContent = dirMul > 0 ? "▲" : "▼";
     else arrow.textContent = "";
   });
 
   const tbody = $("#jobsBody");
-  const shown = jobs.slice(0, 200);
+  const MAX_SHOW = 300;
+  const shown = jobs.slice(0, MAX_SHOW);
   tbody.innerHTML = shown.map(j => {
-    const dateStr = j.date ? new Date(j.date).toLocaleDateString("en-US", {month:"short",day:"numeric"}) : "";
+    const roleTags = (j.role_tags || []).map(t => `<span class="tag tag-role">${esc(t)}</span>`).join("");
+    const senTag = j.seniority ? `<span class="tag tag-seniority">${esc(j.seniority)}</span>` : "";
+    const compTag = j.compensation ? `<span class="tag tag-ok">${esc(j.compensation)}</span>` : "";
+    const dateIso = j.date_iso || j.date || "";
+    const ago = timeAgo(dateIso);
+    const full = fullDate(dateIso);
     return `<tr>
-      <td><a class="job-title" href="${j.url || '#'}" target="_blank" title="${esc(j.title)}">${esc(j.title)}</a>
-        ${j.seniority ? `<span class="tag">${esc(j.seniority)}</span>` : ""}
-        ${j.compensation ? `<span class="tag tag-ok">${esc(j.compensation)}</span>` : ""}
+      <td>
+        <a class="job-title" href="${j.url || '#'}" target="_blank" rel="noopener" title="${esc(j.title)}">${esc(j.title)}</a>
+        ${senTag} ${compTag}
       </td>
+      <td>${roleTags || '<span style="opacity:.3">—</span>'}</td>
       <td>${esc(j.company)}</td>
       <td>${esc(j.location || "Remote")}</td>
-      <td><span class="tag tag-warn">${esc(j.source)}</span></td>
-      <td>${dateStr}</td>
+      <td><span class="tag tag-src">${esc(j.source)}</span></td>
+      <td><span class="time-ago" title="${esc(full)}">${ago}</span></td>
     </tr>`;
   }).join("");
 
@@ -299,20 +502,52 @@ function renderTable() {
 
 function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
-// Sorting
+// Sorting via table headers
 $$("th[data-col]").forEach(th => {
   th.addEventListener("click", () => {
     const col = th.dataset.col;
-    if (sortCol === col) sortDir *= -1;
-    else { sortCol = col; sortDir = col === "date" ? -1 : 1; }
+    const sel = $("#sortSelect");
+    const cur = sel.value;
+    const [curCol, curDir] = cur.split("_");
+    if (curCol === col) {
+      sel.value = `${col}_${curDir === "asc" ? "desc" : "asc"}`;
+    } else {
+      sel.value = col === "date" ? "date_desc" : `${col}_asc`;
+    }
     renderTable();
   });
 });
 
-// Filter
+// Filters
 $("#filterInput").addEventListener("input", renderTable);
 $("#sourceFilter").addEventListener("change", renderTable);
+$("#seniorityFilter").addEventListener("change", renderTable);
+$("#sortSelect").addEventListener("change", renderTable);
 
+/* ── Export CSV ─────────────────────────────── */
+$("#exportBtn").addEventListener("click", () => {
+  const jobs = getFiltered();
+  if (!jobs.length) return;
+  const cols = ["title", "company", "location", "source", "seniority", "role_tags", "compensation", "date_iso", "url"];
+  const header = cols.join(",");
+  const rows = jobs.map(j =>
+    cols.map(c => {
+      let v = c === "role_tags" ? (j[c] || []).join("; ") : (j[c] || "");
+      v = v.toString().replace(/"/g, '""');
+      return `"${v}"`;
+    }).join(",")
+  );
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `jobs_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ── Init ───────────────────────────────────── */
 loadSources();
 </script>
 </body>

@@ -1004,6 +1004,176 @@ async def scrape_authentic_jobs(days: int = 3, query: str | None = None) -> List
 
 
 # ============================================================================
+# New API-first scrapers (tested in custom-scrapers-testing dry run)
+# ============================================================================
+
+
+async def scrape_hiring_cafe(days: int = 3, query: str | None = None) -> List[Job]:
+    """hiring.cafe public JSON API — rich nested data with compensation, skills, seniority."""
+    search_q = query or "data analyst"
+    url = f"https://hiring.cafe/api/search-jobs?searchQuery={search_q}&workplaceTypes=Remote"
+    async with httpx.AsyncClient() as client:
+        data = await _fetch_json(client, url, timeout=30.0)
+    if not data or not isinstance(data, dict):
+        return []
+    results = data.get("results", [])
+    out: List[Job] = []
+    for item in results:
+        if item.get("is_expired"):
+            continue
+        ji = item.get("job_information") or {}
+        vpd = item.get("v5_processed_job_data") or {}
+        ec = item.get("enriched_company_data") or {}
+        title = ji.get("title") or vpd.get("core_job_title", "")
+        company = ec.get("name") or vpd.get("company_name", "")
+        loc = vpd.get("formatted_workplace_location", "") or "Remote"
+        apply_url = item.get("apply_url", "")
+        if not title or not apply_url:
+            continue
+        date_str = vpd.get("estimated_publish_date", "")
+        dt = _parse_date(date_str)
+        if not _within_days(dt, days):
+            continue
+        desc_parts = []
+        if vpd.get("requirements_summary"):
+            desc_parts.append(vpd["requirements_summary"])
+        skills = vpd.get("technical_tools") or []
+        if skills:
+            desc_parts.append("Skills: " + ", ".join(skills[:10]))
+        seniority = vpd.get("seniority_level", "")
+        if seniority:
+            desc_parts.append(f"Seniority: {seniority}")
+        description = " | ".join(desc_parts)
+        if not _matches_query(title, description, query):
+            continue
+        out.append(Job(
+            id=f"hiringcafe_{item.get('id', hash(apply_url))}",
+            title=title,
+            company=company,
+            location=loc,
+            url=apply_url,
+            description=description[:2000],
+            source="hiring_cafe",
+            date=dt,
+            tags=["api"],
+        ))
+    return out
+
+
+async def scrape_arbeitnow(days: int = 3, query: str | None = None) -> List[Job]:
+    """Arbeitnow free JSON API — European + remote jobs."""
+    url = "https://www.arbeitnow.com/api/job-board-api"
+    async with httpx.AsyncClient() as client:
+        data = await _fetch_json(client, url, timeout=20.0)
+    if not data or not isinstance(data, dict):
+        return []
+    items = data.get("data", [])
+    out: List[Job] = []
+    for item in items:
+        title = item.get("title", "")
+        company = item.get("company_name", "")
+        loc = item.get("location", "")
+        link = item.get("url", "")
+        if not title or not link:
+            continue
+        date_str = item.get("created_at", "")
+        dt = _parse_date(date_str)
+        if not _within_days(dt, days):
+            continue
+        desc = item.get("description", "")
+        tags_list = item.get("tags") or []
+        if not _matches_query(title, f"{desc} {' '.join(tags_list)}", query):
+            continue
+        out.append(Job(
+            id=f"arbeitnow_{hash(link)}",
+            title=title,
+            company=company,
+            location=loc or "Europe",
+            url=link,
+            description=desc[:2000],
+            source="arbeitnow",
+            date=dt,
+            tags=["api"] + tags_list[:5],
+        ))
+    return out
+
+
+async def scrape_jobicy_api(days: int = 3, query: str | None = None) -> List[Job]:
+    """Jobicy public JSON API v2 — remote jobs with tag search."""
+    search_tag = (query or "data analyst").replace(" ", "+")
+    url = f"https://jobicy.com/api/v2/remote-jobs?count=50&tag={search_tag}"
+    async with httpx.AsyncClient() as client:
+        data = await _fetch_json(client, url, timeout=20.0)
+    if not data or not isinstance(data, dict):
+        return []
+    items = data.get("jobs", [])
+    out: List[Job] = []
+    for item in items:
+        title = item.get("jobTitle", "")
+        company = item.get("companyName", "")
+        loc = item.get("jobGeo", "") or "Remote"
+        link = item.get("url", "")
+        if not title or not link:
+            continue
+        date_str = item.get("pubDate", "")
+        dt = _parse_date(date_str)
+        if not _within_days(dt, days):
+            continue
+        desc = item.get("jobExcerpt", "") or item.get("jobDescription", "")
+        if not _matches_query(title, desc, query):
+            continue
+        out.append(Job(
+            id=f"jobicy_{hash(link)}",
+            title=title,
+            company=company,
+            location=loc,
+            url=link,
+            description=desc[:2000],
+            source="jobicy",
+            date=dt,
+            tags=["api"],
+        ))
+    return out
+
+
+async def scrape_workingnomads(days: int = 3, query: str | None = None) -> List[Job]:
+    """WorkingNomads public API — curated remote jobs."""
+    url = "https://www.workingnomads.com/api/exposed_jobs/"
+    async with httpx.AsyncClient() as client:
+        data = await _fetch_json(client, url, timeout=20.0)
+    if not data or not isinstance(data, list):
+        return []
+    out: List[Job] = []
+    for item in data:
+        title = item.get("title", "")
+        company = item.get("company_name", "")
+        loc = item.get("location", "") or "Remote"
+        link = item.get("url", "")
+        if not title or not link:
+            continue
+        date_str = item.get("pub_date", "")
+        dt = _parse_date(date_str)
+        if not _within_days(dt, days):
+            continue
+        desc = item.get("description", "")
+        category = item.get("category_name", "")
+        if not _matches_query(title, f"{desc} {category}", query):
+            continue
+        out.append(Job(
+            id=f"workingnomads_{hash(link)}",
+            title=title,
+            company=company,
+            location=loc,
+            url=link,
+            description=desc[:2000],
+            source="workingnomads",
+            date=dt,
+            tags=["api", category] if category else ["api"],
+        ))
+    return out
+
+
+# ============================================================================
 # Playwright-based headless scrapers (for portals without RSS/API)
 # ============================================================================
 
@@ -2397,11 +2567,38 @@ async def scrape_glassdoor(days: int = 3, query: str | None = None, browser: Opt
         return []
 
 
+SCRAPER_REGISTRY = {
+    "greenhouse": scrape_greenhouse,
+    "lever": scrape_lever,
+    "weworkremotely": scrape_weworkremotely,
+    "jobscollider": scrape_jobscollider,
+    "jobscollider_data": scrape_jobscollider_data,
+    "remoteok": scrape_remoteok,
+    "hn_jobs": scrape_hnrss_jobs,
+    "remotive": scrape_remotive_api,
+    "remotive_rss": scrape_remotive_rss,
+    "remotive_data": scrape_remotive_data_feed,
+    "remotive_ai_ml": scrape_remotive_ai_ml_feed,
+    "wellfound": scrape_wellfound,
+    "indeed": scrape_indeed_rss,
+    "remote_co": scrape_remote_co,
+    "jobspresso": scrape_jobspresso,
+    "himalayas": scrape_himalayas,
+    "authentic_jobs": scrape_authentic_jobs,
+    "stackoverflow": scrape_stackoverflow_jobs,
+    "hiring_cafe": scrape_hiring_cafe,
+    "arbeitnow": scrape_arbeitnow,
+    "jobicy": scrape_jobicy_api,
+    "workingnomads": scrape_workingnomads,
+}
+
+
 async def scrape_all(
     days: int = 3,
     query: str | None = None,
     enable_headless: bool = True,
     mode: str = "all",
+    sources: List[str] | None = None,
 ) -> List[Job]:
     """
     Aggregate all HTTP/RSS-based scrapers in parallel.
@@ -2411,6 +2608,8 @@ async def scrape_all(
         days: Maximum age of jobs in days
         query: Search query (e.g., "data analyst")
         enable_headless: If True and Playwright is available, run headless browser scrapers
+        sources: Optional list of source IDs to run (e.g., ["remoteok", "remotive", "hiring_cafe"]).
+                 If None/empty, runs all sources.
     """
     import os
     from .jobspy_integration import scrape_jobspy_sources
@@ -2419,36 +2618,37 @@ async def scrape_all(
     use_jobspy = os.getenv("USE_JOBSPY", "0") == "1"
     mode = (mode or "all").lower()
 
+    # Normalize sources filter
+    source_filter = None
+    if sources:
+        source_filter = set(s.strip().lower() for s in sources if s and s.strip())
+        if not source_filter:
+            source_filter = None
+
     tasks = []
 
-    # RSS/HTTP sources (fast, reliable)
     if mode in ("rss", "all"):
-        tasks.extend(
-            [
-                scrape_greenhouse(days=days, query=query),
-                scrape_lever(days=days, query=query),
-                scrape_weworkremotely(days=days, query=query),
-                scrape_jobscollider(days=days, query=query),
-                scrape_jobscollider_data(days=days, query=query),  # Data-analytics focused feed
-                scrape_remoteok(days=days, query=query),
-                scrape_hnrss_jobs(days=days, query=query),
-                scrape_remotive_api(days=days, query=query),
-                scrape_remotive_rss(days=days, query=query),
-                scrape_remotive_data_feed(days=days, query=query),  # Remotive data category
-                scrape_remotive_ai_ml_feed(days=days, query=query),  # Remotive AI/ML category
-                scrape_wellfound(days=days, query=query),
-                scrape_indeed_rss(days=days, query=query),
-                scrape_remote_co(days=days, query=query),
-                scrape_jobspresso(days=days, query=query),
-                scrape_himalayas(days=days, query=query),
-                scrape_authentic_jobs(days=days, query=query),
-                scrape_stackoverflow_jobs(days=days, query=query),  # Stack Overflow Jobs RSS
-            ]
-        )
+        for name, scraper_fn in SCRAPER_REGISTRY.items():
+            if source_filter and name not in source_filter:
+                continue
+            tasks.append(scraper_fn(days=days, query=query))
 
     # Optional: python-jobspy backend for big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
     if use_jobspy and mode in ("headless", "all"):
-        tasks.append(scrape_jobspy_sources(days=days, query=query))
+        if not source_filter or "jobspy" in source_filter:
+            tasks.append(scrape_jobspy_sources(days=days, query=query))
+
+    # Headless scraper name mapping for source_filter
+    HEADLESS_SCRAPERS = {
+        "linkedin": lambda b: scrape_linkedin(days=days, query=query, browser=b),
+        "indeed_headless": lambda b: scrape_indeed_headless(days=days, query=query, browser=b),
+        "naukri": lambda b: scrape_naukri(days=days, query=query, browser=b),
+        "hirist": lambda b: scrape_hirist(days=days, query=query, browser=b),
+        "foundit": lambda b: scrape_foundit(days=days, query=query, browser=b),
+        "shine": lambda b: scrape_shine(days=days, query=query, browser=b),
+        "monster": lambda b: scrape_monster(days=days, query=query, browser=b),
+        "glassdoor": lambda b: scrape_glassdoor(days=days, query=query, browser=b),
+    }
 
     # Add Playwright headless scrapers if enabled and requested
     if enable_headless and mode in ("headless", "all"):
@@ -2458,14 +2658,8 @@ async def scrape_all(
                 browser = await p.chromium.launch(headless=True)
                 try:
                     headless_tasks = [
-                        scrape_linkedin(days=days, query=query, browser=browser),
-                        scrape_indeed_headless(days=days, query=query, browser=browser),
-                        scrape_naukri(days=days, query=query, browser=browser),
-                        scrape_hirist(days=days, query=query, browser=browser),
-                        scrape_foundit(days=days, query=query, browser=browser),
-                        scrape_shine(days=days, query=query, browser=browser),
-                        scrape_monster(days=days, query=query, browser=browser),
-                        scrape_glassdoor(days=days, query=query, browser=browser),
+                        fn(browser) for name, fn in HEADLESS_SCRAPERS.items()
+                        if not source_filter or name in source_filter
                     ]
                     tasks.extend(headless_tasks)
                     results = await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,6 +1,6 @@
 # Job Search API — FastAPI + Playwright
 
-Python job scraper service: 11+ RSS/HTTP sources and optional headless scrapers (LinkedIn, Indeed, Naukri). Built for **Railway** or any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).
+Python job scraper service: **22 RSS/HTTP sources** and **8 optional headless scrapers** (LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor). Built for **Railway** or any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).
 
 ---
 
@@ -20,9 +20,9 @@ Python job scraper service: 11+ RSS/HTTP sources and optional headless scrapers 
 
 | Area | Details |
 |------|---------|
-| **API** | `GET /health`, `GET /jobs`, `POST /refresh`, RSS feed, grouped/salary endpoints, system info |
-| **RSS/HTTP** | Greenhouse (configured boards), Lever (configured boards), WeWorkRemotely, RemoteOK, HN RSS Jobs, Jobscollider, Remotive, Wellfound, Indeed, Remote.co, Jobspresso, Himalayas, Authentic Jobs |
-| **Headless** (when `ENABLE_HEADLESS=1`) | LinkedIn Jobs, Indeed, Naukri.com; more planned (Monster, Glassdoor, etc.) |
+| **API** | `GET /health`, `GET /jobs`, `POST /refresh?sources=...`, RSS feed, grouped/salary endpoints, system info |
+| **RSS/HTTP (22)** | Greenhouse, Lever, WeWorkRemotely, RemoteOK, HN Jobs, Jobscollider (x2), Remotive (API + RSS + data + AI/ML), Wellfound, Indeed RSS, Remote.co, Jobspresso, Himalayas, Authentic Jobs, StackOverflow, Hiring.cafe, Arbeitnow, Jobicy, WorkingNomads |
+| **Headless (8)** (when `ENABLE_HEADLESS=1`) | LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor |
 | **UI** | `/ui/` — Core API, RSSJobs.app, JobSpy, JobSpy.tech embed, Interview Prep; `/ui/monitor.html` — password-protected health & API docs |
 
 See **[SOURCES_STATUS.md](SOURCES_STATUS.md)** for board status and **[JOBS-SCRAPER.md](../JOBS-SCRAPER.md)** for how this fits with the rest of the workspace.
@@ -46,7 +46,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 - **UI:** http://localhost:8000/ui/  
-- **Refresh jobs:** `POST /refresh?q=data%20analyst&days=3`  
+- **Refresh jobs:** `POST /refresh?q=data%20analyst&days=3`
+- **Refresh (specific sources):** `POST /refresh?q=data%20analyst&days=3&sources=remoteok,remotive,indeed`
 - **List jobs:** `GET /jobs?days=3&limit=50`
 
 ---
@@ -136,8 +137,8 @@ If `MONITOR_SECRET` is not set on the server, `GET /api/monitor` returns **503**
 
 ## Roadmap
 
-- More Playwright scrapers (Monster, Foundit, Glassdoor, Hirist, etc.).
 - Persist jobs in Postgres/Neon instead of JSON when desired.
+- Wire frontend to use Railway as primary backend (Phase 2/3).
 
 ---
 

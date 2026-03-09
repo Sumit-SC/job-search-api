@@ -89,15 +89,7 @@ window.addEventListener('DOMContentLoaded', () => {
     checkApiHealth();
     setupRoadmapEmbed();
     wireInstantFilters();
-    setupQuickFilters();
-
-    const locPresetSync = document.getElementById('search-location-preset');
-    if (locPresetSync) {
-        locPresetSync.addEventListener('change', function() {
-            const locText = document.getElementById('search-location-text');
-            if (locText && this.value) locText.value = this.value;
-        });
-    }
+    setupClearFilters();
 
     const csvBtn = document.getElementById('export-csv-btn');
     const jsonBtn = document.getElementById('export-json-btn');
@@ -262,19 +254,8 @@ refreshBtn.addEventListener('click', async () => {
     }
 });
 
-// -----------------------------
-// Step 3: Search / filter jobs (client-side only)
-// -----------------------------
-searchBtn.addEventListener('click', () => {
-    searchJobs();
-});
-
-// Allow Enter key to trigger search
-document.getElementById('search-query').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        searchJobs();
-    }
-});
+// Step 3: Search / filter (mostly instant via wireInstantFilters, but keep manual trigger)
+if (searchBtn) searchBtn.addEventListener('click', () => searchJobs());
 
 function searchJobs() {
     if (!allJobs.length) {
@@ -284,10 +265,6 @@ function searchJobs() {
         return;
     }
 
-    searchBtn.disabled = true;
-    searchBtn.querySelector('.btn-text').style.display = 'none';
-    searchBtn.querySelector('.btn-loader').style.display = 'inline';
-
     searchStatus.className = 'status-message info show';
     searchStatus.textContent = '⏳ Filtering jobs...';
 
@@ -295,10 +272,6 @@ function searchJobs() {
 
     searchStatus.className = 'status-message success show';
     searchStatus.textContent = `✅ Showing ${shownCount} jobs (from ${allJobs.length} loaded)`;
-
-    searchBtn.disabled = false;
-    searchBtn.querySelector('.btn-text').style.display = 'inline';
-    searchBtn.querySelector('.btn-loader').style.display = 'none';
 }
 
 function showStep3Card() {
@@ -313,66 +286,35 @@ function debounce(fn, ms) {
 
 function wireInstantFilters() {
     const debouncedFilter = debounce(() => { if (allJobs.length) applyFiltersAndRender(); }, 300);
-    ['search-query', 'search-location-text', 'search-days', 'search-limit', 'search-yoe-min', 'search-yoe-max'].forEach(id => {
+    ['search-query', 'filter-location-custom', 'search-days', 'search-limit', 'search-yoe-min', 'search-yoe-max'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', debouncedFilter);
     });
-    ['search-sources-select', 'search-sort', 'search-currency', 'search-location-preset'].forEach(id => {
+    ['filter-role', 'filter-location', 'filter-remote', 'filter-level', 'filter-sources', 'search-sort', 'search-currency'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', () => { if (allJobs.length) applyFiltersAndRender(); });
     });
-    const remoteCheck = document.getElementById('search-remote-only');
-    if (remoteCheck) remoteCheck.addEventListener('change', () => { if (allJobs.length) applyFiltersAndRender(); });
 }
 
-function setupQuickFilters() {
-    document.querySelectorAll('.chip[data-preset]').forEach(chip => {
-        chip.addEventListener('click', () => {
-            const preset = chip.dataset.preset;
-            const qEl = document.getElementById('search-query');
-            const locEl = document.getElementById('search-location-text');
-            const locPreset = document.getElementById('search-location-preset');
-            const remoteEl = document.getElementById('search-remote-only');
-            const yoeMinEl = document.getElementById('search-yoe-min');
-            const yoeMaxEl = document.getElementById('search-yoe-max');
-            const daysEl = document.getElementById('search-days');
-
-            document.querySelectorAll('.chip[data-preset]').forEach(c => c.classList.remove('chip-active'));
-
-            if (preset === 'clear') {
-                if (qEl) qEl.value = '';
-                if (locEl) locEl.value = '';
-                if (locPreset) locPreset.value = '';
-                if (remoteEl) remoteEl.checked = false;
-                if (yoeMinEl) yoeMinEl.value = '';
-                if (yoeMaxEl) yoeMaxEl.value = '';
-                if (daysEl) daysEl.value = '7';
-            } else if (preset === 'pune') {
-                if (locPreset) locPreset.value = 'pune';
-                if (locEl) locEl.value = 'pune';
-            } else if (preset === 'remote-india') {
-                if (locEl) locEl.value = 'india';
-                if (locPreset) locPreset.value = 'india';
-                if (remoteEl) remoteEl.checked = true;
-            } else if (preset === 'remote-anywhere') {
-                if (locEl) locEl.value = '';
-                if (locPreset) locPreset.value = 'remote';
-                if (remoteEl) remoteEl.checked = true;
-            } else if (preset === 'data-analyst') {
-                if (qEl) qEl.value = 'data analyst';
-            } else if (preset === 'analytics-engineer') {
-                if (qEl) qEl.value = 'analytics engineer';
-            } else if (preset === 'entry-level') {
-                if (yoeMinEl) yoeMinEl.value = '0';
-                if (yoeMaxEl) yoeMaxEl.value = '2';
-            } else if (preset === 'mid-level') {
-                if (yoeMinEl) yoeMinEl.value = '2';
-                if (yoeMaxEl) yoeMaxEl.value = '5';
-            }
-
-            if (preset !== 'clear') chip.classList.add('chip-active');
-            if (allJobs.length) applyFiltersAndRender();
+function setupClearFilters() {
+    const btn = document.getElementById('clear-filters-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        ['filter-role', 'filter-location', 'filter-remote', 'filter-level', 'search-sort', 'search-currency'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
         });
+        ['search-query', 'filter-location-custom', 'search-yoe-min', 'search-yoe-max'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const daysEl = document.getElementById('search-days');
+        if (daysEl) daysEl.value = '7';
+        const limitEl = document.getElementById('search-limit');
+        if (limitEl) limitEl.value = '100';
+        const srcSel = document.getElementById('filter-sources');
+        if (srcSel) Array.from(srcSel.options).forEach(o => o.selected = false);
+        if (allJobs.length) applyFiltersAndRender();
     });
 }
 
@@ -384,7 +326,7 @@ function normalizeSourceLabel(src) {
 }
 
 function updateSourceOptions(jobs) {
-    const select = document.getElementById('search-sources-select');
+    const select = document.getElementById('filter-sources');
     if (!select || !Array.isArray(jobs)) return;
     const prev = new Set(Array.from(select.selectedOptions).map(o => o.value));
     const discovered = Array.from(new Set(jobs.map(j => (j && j.source) ? String(j.source).trim() : '').filter(Boolean))).sort();
@@ -396,24 +338,23 @@ function updateSourceOptions(jobs) {
 
 // Apply current filters on in-memory jobs and render
 function applyFiltersAndRender() {
-    const queryEl = document.getElementById('search-query');
-    const locationEl = document.getElementById('search-location-text');
-    const query = (queryEl && queryEl.value.trim().toLowerCase()) || null;
-    const locationText = (locationEl && locationEl.value.trim().toLowerCase()) || null;
-    const locPresetEl = document.getElementById('search-location-preset');
-    const presetLoc = locPresetEl ? locPresetEl.value : '';
-    const effectiveLocation = locationText || presetLoc || null;
-    const days = parseInt(document.getElementById('search-days')?.value) || 3;
-    const limit = parseInt(document.getElementById('search-limit')?.value) || 50;
-    const sourcesSelect = document.getElementById('search-sources-select');
+    const query = (document.getElementById('search-query')?.value.trim().toLowerCase()) || null;
+    const roleFilter = document.getElementById('filter-role')?.value || '';
+    const locationDropdown = document.getElementById('filter-location')?.value || '';
+    const locationCustom = (document.getElementById('filter-location-custom')?.value.trim().toLowerCase()) || '';
+    const remoteType = document.getElementById('filter-remote')?.value || '';
+    const levelFilter = document.getElementById('filter-level')?.value || '';
+    const days = parseInt(document.getElementById('search-days')?.value) || 7;
+    const limit = parseInt(document.getElementById('search-limit')?.value) || 100;
+    const sourcesSelect = document.getElementById('filter-sources');
     const selectedSources = sourcesSelect ? Array.from(sourcesSelect.selectedOptions).map(o => o.value) : [];
-    const sort = document.getElementById('search-sort').value || 'date';
-    const yoeMinVal = document.getElementById('search-yoe-min').value;
-    const yoeMaxVal = document.getElementById('search-yoe-max').value;
-    const remoteOnly = document.getElementById('search-remote-only').checked;
-    const currencyFilter = document.getElementById('search-currency').value;
-    const yoeMin = yoeMinVal === '' ? null : parseInt(yoeMinVal);
-    const yoeMax = yoeMaxVal === '' ? null : parseInt(yoeMaxVal);
+    const sort = document.getElementById('search-sort')?.value || 'date';
+    const yoeMinVal = document.getElementById('search-yoe-min')?.value;
+    const yoeMaxVal = document.getElementById('search-yoe-max')?.value;
+    const currencyFilter = document.getElementById('search-currency')?.value || '';
+    const yoeMin = (!yoeMinVal || yoeMinVal === '') ? null : parseInt(yoeMinVal);
+    const yoeMax = (!yoeMaxVal || yoeMaxVal === '') ? null : parseInt(yoeMaxVal);
+    const effectiveLocation = locationCustom || locationDropdown || null;
 
     if (!allJobs.length) {
         jobsContainer.innerHTML = '<div class="empty-state"><p>No data loaded. Fetch or refresh jobs above, then search.</p></div>';
@@ -422,68 +363,61 @@ function applyFiltersAndRender() {
     }
 
     const now = new Date();
+    const LEVEL_YOE = { intern: [0, 0], entry: [0, 2], mid: [2, 5], senior: [5, 10], lead: [10, 99] };
+    const levelRange = levelFilter ? LEVEL_YOE[levelFilter] : null;
 
     let filtered = allJobs.filter((job) => {
-        // Days filter
         if (days && job.date) {
-            const jobDate = new Date(job.date);
-            const diffMs = now - jobDate;
-            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            const diffDays = (now - new Date(job.date)) / (1000 * 60 * 60 * 24);
             if (diffDays > days) return false;
         }
 
-        // Source filter (multi-select)
         if (selectedSources.length > 0 && !selectedSources.includes(job.source)) {
             return false;
         }
 
-        // Location text filter
         if (effectiveLocation) {
             const loc = (job.location || '').toLowerCase();
             if (!loc.includes(effectiveLocation)) return false;
         }
 
-        // Remote-only filter
-        if (remoteOnly) {
+        if (remoteType) {
             const loc = (job.location || '').toLowerCase();
+            const title = (job.title || '').toLowerCase();
             const desc = (job.description || '').toLowerCase();
-            const remoteHints = ['remote', 'anywhere', 'work from home', 'wfh', 'hybrid'];
-            const isRemote = remoteHints.some((hint) => loc.includes(hint) || desc.includes(hint));
-            if (!isRemote) return false;
+            const blob = loc + ' ' + title + ' ' + desc;
+            if (remoteType === 'remote') {
+                if (!/(remote|anywhere|work from home|wfh|distributed)/.test(blob)) return false;
+            } else if (remoteType === 'hybrid') {
+                if (!/(hybrid)/.test(blob)) return false;
+            } else if (remoteType === 'onsite') {
+                if (/(remote|anywhere|work from home|wfh|distributed|hybrid)/.test(blob)) return false;
+            }
         }
 
-        // Text query filter
-        if (query) {
-            const text = [
-                job.title,
-                job.company,
-                job.location,
-                job.description,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
+        if (roleFilter) {
+            const text = ((job.title || '') + ' ' + (job.description || '')).toLowerCase();
+            if (!text.includes(roleFilter)) return false;
+        }
 
+        if (query) {
+            const text = [job.title, job.company, job.location, job.description].filter(Boolean).join(' ').toLowerCase();
             if (!text.includes(query)) return false;
         }
 
-        // YOE filter
         const jMin = job.yoe_min;
         const jMax = job.yoe_max;
-        if (yoeMin !== null) {
-            if (jMax !== null && jMax < yoeMin) return false;
-            if (jMin !== null && jMin > yoeMin) return false;
+        const effYoeMin = yoeMin !== null ? yoeMin : (levelRange ? levelRange[0] : null);
+        const effYoeMax = yoeMax !== null ? yoeMax : (levelRange ? levelRange[1] : null);
+        if (effYoeMin !== null) {
+            if (jMax !== null && jMax < effYoeMin) return false;
         }
-        if (yoeMax !== null) {
-            if (jMin !== null && jMin > yoeMax) return false;
-            if (jMax !== null && jMax > yoeMax) return false;
+        if (effYoeMax !== null) {
+            if (jMin !== null && jMin > effYoeMax) return false;
         }
 
-        // Currency filter
         if (currencyFilter) {
-            if (!job.currency || job.currency.toUpperCase() !== currencyFilter.toUpperCase()) {
-                return false;
-            }
+            if (!job.currency || job.currency.toUpperCase() !== currencyFilter.toUpperCase()) return false;
         }
 
         return true;
@@ -665,7 +599,7 @@ function renderSourceStats(jobs) {
     el.querySelectorAll('.source-badge').forEach(badge => {
         badge.addEventListener('click', () => {
             const src = badge.dataset.source;
-            const sel = document.getElementById('search-sources-select');
+            const sel = document.getElementById('filter-sources');
             if (!sel) return;
             Array.from(sel.options).forEach(opt => { opt.selected = opt.value === src; });
             applyFiltersAndRender();

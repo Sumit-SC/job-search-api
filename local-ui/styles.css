@@ -1152,42 +1152,80 @@ a.btn {
 }
 .job-meta-item.job-copy-chatgpt-btn:hover { text-decoration: underline; }
 
-/* Quick filter chips */
-.quick-filters {
+/* Filter bar */
+.filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-color);
+}
+.filter-bar-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 16px;
-    padding: 10px 0;
+    gap: 10px;
+    align-items: flex-end;
 }
-.quick-filters-label {
-    font-size: 0.8rem;
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1 1 160px;
+    min-width: 120px;
+}
+.filter-group-narrow {
+    flex: 0 1 110px;
+    min-width: 80px;
+}
+.filter-group label {
+    font-size: 0.72rem;
     font-weight: 600;
-    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
 }
-.chip {
-    font-size: 0.8rem;
-    padding: 5px 12px;
+.filter-group select,
+.filter-group input[type="text"],
+.filter-group input[type="number"] {
+    font-size: 0.85rem;
+    padding: 6px 8px;
     border: 1px solid var(--border-color);
-    border-radius: 999px;
+    border-radius: 6px;
     background: var(--card-bg);
     color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s;
-    font-weight: 500;
+    transition: border-color 0.15s;
 }
-.chip:hover {
+.filter-group select:focus,
+.filter-group input:focus {
     border-color: var(--primary-color);
-    background: rgba(37, 99, 235, 0.08);
-    color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
-.chip-active {
-    background: var(--primary-color) !important;
-    color: #fff !important;
-    border-color: var(--primary-color) !important;
+.filter-group .select-multi {
+    min-height: 34px;
+    max-height: 90px;
+}
+.btn-sm-outline {
+    font-size: 0.78rem;
+    padding: 6px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.btn-sm-outline:hover {
+    border-color: var(--error-color);
+    color: var(--error-color);
+}
+[data-theme="dark"] .filter-bar {
+    background: rgba(15, 23, 42, 0.5);
 }
 
 /* Source stats badges */

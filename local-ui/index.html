@@ -119,89 +119,106 @@
             <div id="step3-card" class="card card-step3 hidden" style="padding: 1.5rem 1.75rem;">
                 <h2 style="margin-bottom: 0.5rem;">Search and Filter Jobs</h2>
                 <p class="description" style="margin-bottom: 1rem;">Step 3: Narrow and rank what is already loaded in memory for fast iterative analysis.</p>
-                <div class="quick-filters">
-                    <span class="quick-filters-label">Quick:</span>
-                    <button type="button" class="chip" data-preset="pune">Pune</button>
-                    <button type="button" class="chip" data-preset="remote-india">Remote India</button>
-                    <button type="button" class="chip" data-preset="remote-anywhere">Remote Anywhere</button>
-                    <button type="button" class="chip" data-preset="data-analyst">Data Analyst</button>
-                    <button type="button" class="chip" data-preset="analytics-engineer">Analytics Engineer</button>
-                    <button type="button" class="chip" data-preset="entry-level">Entry Level (0-2 YOE)</button>
-                    <button type="button" class="chip" data-preset="mid-level">Mid Level (2-5 YOE)</button>
-                    <button type="button" class="chip" data-preset="clear">Clear All Filters</button>
-                </div>
-                <div class="search-controls">
-                    <div class="input-row">
-                        <div class="input-group">
-                            <label for="search-query">Query:</label>
-                            <input type="text" id="search-query" placeholder="e.g., python developer">
+                <div class="filter-bar">
+                    <div class="filter-bar-row">
+                        <div class="filter-group">
+                            <label for="filter-role">Role</label>
+                            <select id="filter-role">
+                                <option value="">All Roles</option>
+                                <option value="data analyst">Data Analyst</option>
+                                <option value="data engineer">Data Engineer</option>
+                                <option value="data scientist">Data Scientist</option>
+                                <option value="analytics engineer">Analytics Engineer</option>
+                                <option value="business analyst">Business Analyst</option>
+                                <option value="bi analyst">BI Analyst</option>
+                                <option value="ml engineer">ML Engineer</option>
+                                <option value="python developer">Python Developer</option>
+                                <option value="software engineer">Software Engineer</option>
+                                <option value="frontend developer">Frontend Developer</option>
+                                <option value="backend developer">Backend Developer</option>
+                                <option value="product manager">Product Manager</option>
+                            </select>
                         </div>
-                        <div class="input-group">
-                            <label for="search-location-text">Location:</label>
-                            <div style="display:flex;gap:6px;">
-                                <select id="search-location-preset" style="width:auto;min-width:100px;">
-                                    <option value="">Custom...</option>
+                        <div class="filter-group">
+                            <label for="filter-location">Location</label>
+                            <select id="filter-location">
+                                <option value="">All Locations</option>
+                                <optgroup label="India">
                                     <option value="pune">Pune</option>
-                                    <option value="remote">Remote</option>
-                                    <option value="india">India</option>
                                     <option value="bangalore">Bangalore</option>
                                     <option value="mumbai">Mumbai</option>
                                     <option value="hyderabad">Hyderabad</option>
                                     <option value="delhi">Delhi / NCR</option>
                                     <option value="chennai">Chennai</option>
+                                    <option value="india">India (any city)</option>
+                                </optgroup>
+                                <optgroup label="International">
                                     <option value="us">United States</option>
                                     <option value="uk">United Kingdom</option>
+                                    <option value="canada">Canada</option>
                                     <option value="europe">Europe</option>
-                                </select>
-                                <input type="text" id="search-location-text" placeholder="or type custom location" style="flex:1;">
-                            </div>
+                                    <option value="singapore">Singapore</option>
+                                </optgroup>
+                            </select>
                         </div>
-                        <div class="input-group">
-                            <label for="search-days">Days:</label>
-                            <input type="number" id="search-days" min="1" max="30" value="3">
+                        <div class="filter-group">
+                            <label for="filter-remote">Remote Type</label>
+                            <select id="filter-remote">
+                                <option value="">Any</option>
+                                <option value="remote">Remote</option>
+                                <option value="hybrid">Hybrid</option>
+                                <option value="onsite">On-site</option>
+                            </select>
                         </div>
-                        <div class="input-group">
-                            <label for="search-limit">Limit:</label>
-                            <input type="number" id="search-limit" min="1" max="400" value="50">
+                        <div class="filter-group">
+                            <label for="filter-level">Level</label>
+                            <select id="filter-level">
+                                <option value="">All Levels</option>
+                                <option value="intern">Intern</option>
+                                <option value="entry">Entry (0-2 yrs)</option>
+                                <option value="mid">Mid (2-5 yrs)</option>
+                                <option value="senior">Senior (5-10 yrs)</option>
+                                <option value="lead">Lead / Staff (10+)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-sources">Source</label>
+                            <select id="filter-sources" multiple class="select-multi">
+                            </select>
                         </div>
                     </div>
-                    <div class="input-row">
-                        <div class="input-group">
-                            <label for="search-sources-select">Sources (multi-select):</label>
-                            <select id="search-sources-select" multiple class="select-multi">
-                                <option value="weworkremotely">WWR</option>
-                                <option value="jobscollider">Jobscollider</option>
-                                <option value="remoteok">RemoteOK</option>
-                                <option value="remotive">Remotive</option>
-                                <option value="wellfound">Wellfound</option>
-                                <option value="indeed">Indeed</option>
-                                <option value="remote.co">Remote.co</option>
-                                <option value="jobspresso">Jobspresso</option>
-                                <option value="himalayas">Himalayas</option>
-                                <option value="authenticjobs">Authentic</option>
-                                <option value="stackoverflow">Stack Overflow</option>
-                                <option value="linkedin">LinkedIn</option>
-                                <option value="naukri">Naukri</option>
-                                <option value="justremote">JustRemote</option>
-                                <option value="dailyremote">DailyRemote</option>
-                                <option value="remoteindian">RemoteIndian</option>
-                            </select>
-                            <small class="input-hint">Hold Ctrl/Cmd to select multiple; leave empty for all sources.</small>
+                    <div class="filter-bar-row">
+                        <div class="filter-group">
+                            <label for="search-query">Search</label>
+                            <input type="text" id="search-query" placeholder="Free-text search across title, company, description...">
                         </div>
-                        <div class="input-group">
-                            <label for="search-sort">Sort By:</label>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="filter-location-custom">Custom Location</label>
+                            <input type="text" id="filter-location-custom" placeholder="e.g. Austin, Berlin">
+                        </div>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-days">Days</label>
+                            <input type="number" id="search-days" min="1" max="30" value="7">
+                        </div>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-limit">Limit</label>
+                            <input type="number" id="search-limit" min="1" max="400" value="100">
+                        </div>
+                    </div>
+                    <div class="filter-bar-row">
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-sort">Sort</label>
                             <select id="search-sort">
                                 <option value="date">Date (Newest)</option>
                                 <option value="relevance">Relevance</option>
                                 <option value="source">Source</option>
                                 <option value="salary">Salary (Highest)</option>
-                                <option value="currency">Currency</option>
                             </select>
                         </div>
-                        <div class="input-group">
-                            <label for="search-currency">Currency:</label>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-currency">Currency</label>
                             <select id="search-currency">
-                                <option value="">All currencies</option>
+                                <option value="">All</option>
                                 <option value="USD">USD</option>
                                 <option value="EUR">EUR</option>
                                 <option value="GBP">GBP</option>
@@ -210,27 +227,18 @@
                                 <option value="AUD">AUD</option>
                             </select>
                         </div>
-                        <div class="input-group">
-                            <label for="search-yoe-min">Min YOE:</label>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-yoe-min">Min YOE</label>
                             <input type="number" id="search-yoe-min" min="0" placeholder="Any">
                         </div>
-                        <div class="input-group">
-                            <label for="search-yoe-max">Max YOE:</label>
+                        <div class="filter-group filter-group-narrow">
+                            <label for="search-yoe-max">Max YOE</label>
                             <input type="number" id="search-yoe-max" min="0" placeholder="Any">
                         </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="input-group checkbox-group">
-                            <label>
-                                <input type="checkbox" id="search-remote-only">
-                                Only remote / mostly remote
-                            </label>
+                        <div class="filter-group" style="align-self:end;">
+                            <button type="button" id="clear-filters-btn" class="btn-sm btn-sm-outline">Clear All</button>
                         </div>
                     </div>
-                    <button id="search-btn" class="btn btn-secondary">
-                        <span class="btn-text">🔎 Search Jobs</span>
-                        <span class="btn-loader" style="display: none;">⏳ Searching...</span>
-                    </button>
                 </div>
                 <div id="search-status" class="status-message"></div>
             </div>

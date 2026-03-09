@@ -88,6 +88,22 @@ window.addEventListener('DOMContentLoaded', () => {
     updateDateTimeDisplay();
     checkApiHealth();
     setupRoadmapEmbed();
+    wireInstantFilters();
+    setupQuickFilters();
+
+    const locPresetSync = document.getElementById('search-location-preset');
+    if (locPresetSync) {
+        locPresetSync.addEventListener('change', function() {
+            const locText = document.getElementById('search-location-text');
+            if (locText && this.value) locText.value = this.value;
+        });
+    }
+
+    const csvBtn = document.getElementById('export-csv-btn');
+    const jsonBtn = document.getElementById('export-json-btn');
+    if (csvBtn) csvBtn.addEventListener('click', exportCSV);
+    if (jsonBtn) jsonBtn.addEventListener('click', exportJSON);
+
     if (jobsContainer) {
         jobsContainer.addEventListener('click', (e) => {
             const btn = e.target.closest('.job-copy-chatgpt-btn');
@@ -290,6 +306,76 @@ function showStep3Card() {
     if (step3 && allJobs.length > 0) step3.classList.remove('hidden');
 }
 
+function debounce(fn, ms) {
+    let t;
+    return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+}
+
+function wireInstantFilters() {
+    const debouncedFilter = debounce(() => { if (allJobs.length) applyFiltersAndRender(); }, 300);
+    ['search-query', 'search-location-text', 'search-days', 'search-limit', 'search-yoe-min', 'search-yoe-max'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', debouncedFilter);
+    });
+    ['search-sources-select', 'search-sort', 'search-currency', 'search-location-preset'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => { if (allJobs.length) applyFiltersAndRender(); });
+    });
+    const remoteCheck = document.getElementById('search-remote-only');
+    if (remoteCheck) remoteCheck.addEventListener('change', () => { if (allJobs.length) applyFiltersAndRender(); });
+}
+
+function setupQuickFilters() {
+    document.querySelectorAll('.chip[data-preset]').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const preset = chip.dataset.preset;
+            const qEl = document.getElementById('search-query');
+            const locEl = document.getElementById('search-location-text');
+            const locPreset = document.getElementById('search-location-preset');
+            const remoteEl = document.getElementById('search-remote-only');
+            const yoeMinEl = document.getElementById('search-yoe-min');
+            const yoeMaxEl = document.getElementById('search-yoe-max');
+            const daysEl = document.getElementById('search-days');
+
+            document.querySelectorAll('.chip[data-preset]').forEach(c => c.classList.remove('chip-active'));
+
+            if (preset === 'clear') {
+                if (qEl) qEl.value = '';
+                if (locEl) locEl.value = '';
+                if (locPreset) locPreset.value = '';
+                if (remoteEl) remoteEl.checked = false;
+                if (yoeMinEl) yoeMinEl.value = '';
+                if (yoeMaxEl) yoeMaxEl.value = '';
+                if (daysEl) daysEl.value = '7';
+            } else if (preset === 'pune') {
+                if (locPreset) locPreset.value = 'pune';
+                if (locEl) locEl.value = 'pune';
+            } else if (preset === 'remote-india') {
+                if (locEl) locEl.value = 'india';
+                if (locPreset) locPreset.value = 'india';
+                if (remoteEl) remoteEl.checked = true;
+            } else if (preset === 'remote-anywhere') {
+                if (locEl) locEl.value = '';
+                if (locPreset) locPreset.value = 'remote';
+                if (remoteEl) remoteEl.checked = true;
+            } else if (preset === 'data-analyst') {
+                if (qEl) qEl.value = 'data analyst';
+            } else if (preset === 'analytics-engineer') {
+                if (qEl) qEl.value = 'analytics engineer';
+            } else if (preset === 'entry-level') {
+                if (yoeMinEl) yoeMinEl.value = '0';
+                if (yoeMaxEl) yoeMaxEl.value = '2';
+            } else if (preset === 'mid-level') {
+                if (yoeMinEl) yoeMinEl.value = '2';
+                if (yoeMaxEl) yoeMaxEl.value = '5';
+            }
+
+            if (preset !== 'clear') chip.classList.add('chip-active');
+            if (allJobs.length) applyFiltersAndRender();
+        });
+    });
+}
+
 function normalizeSourceLabel(src) {
     return String(src || '')
         .replace(/[_-]+/g, ' ')
@@ -314,6 +400,9 @@ function applyFiltersAndRender() {
     const locationEl = document.getElementById('search-location-text');
     const query = (queryEl && queryEl.value.trim().toLowerCase()) || null;
     const locationText = (locationEl && locationEl.value.trim().toLowerCase()) || null;
+    const locPresetEl = document.getElementById('search-location-preset');
+    const presetLoc = locPresetEl ? locPresetEl.value : '';
+    const effectiveLocation = locationText || presetLoc || null;
     const days = parseInt(document.getElementById('search-days')?.value) || 3;
     const limit = parseInt(document.getElementById('search-limit')?.value) || 50;
     const sourcesSelect = document.getElementById('search-sources-select');
@@ -349,9 +438,9 @@ function applyFiltersAndRender() {
         }
 
         // Location text filter
-        if (locationText) {
+        if (effectiveLocation) {
             const loc = (job.location || '').toLowerCase();
-            if (!loc.includes(locationText)) return false;
+            if (!loc.includes(effectiveLocation)) return false;
         }
 
         // Remote-only filter
@@ -437,6 +526,7 @@ function applyFiltersAndRender() {
         });
     }
 
+    renderSourceStats(filtered);
     const limited = filtered.slice(0, limit);
     displayJobs(limited);
     updateResultsHeader(filtered.length);
@@ -560,6 +650,54 @@ function escapeHtml(text) {
 function updateResultsHeader(count) {
     resultsTitle.textContent = 'Jobs';
     resultsCount.textContent = `${count} ${count === 1 ? 'job' : 'jobs'} found`;
+}
+
+function renderSourceStats(jobs) {
+    const el = document.getElementById('source-stats');
+    if (!el) return;
+    if (!jobs.length) { el.innerHTML = ''; return; }
+    const counts = {};
+    jobs.forEach(j => { const s = j.source || '?'; counts[s] = (counts[s] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    el.innerHTML = sorted.map(([src, count]) =>
+        `<span class="source-badge" data-source="${escapeHtml(src)}" title="Click to filter by ${escapeHtml(src)}">${escapeHtml(normalizeSourceLabel(src))} <strong>${count}</strong></span>`
+    ).join('');
+    el.querySelectorAll('.source-badge').forEach(badge => {
+        badge.addEventListener('click', () => {
+            const src = badge.dataset.source;
+            const sel = document.getElementById('search-sources-select');
+            if (!sel) return;
+            Array.from(sel.options).forEach(opt => { opt.selected = opt.value === src; });
+            applyFiltersAndRender();
+        });
+    });
+}
+
+function exportCSV() {
+    if (!lastDisplayedJobs.length) return;
+    const headers = ['title','company','location','source','date','url','salary_min','salary_max','currency','yoe_min','yoe_max'];
+    const rows = lastDisplayedJobs.map(j => headers.map(h => {
+        let v = j[h]; if (v == null) v = ''; if (v instanceof Date) v = v.toISOString();
+        return '"' + String(v).replace(/"/g, '""') + '"';
+    }).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    downloadFile(csv, 'jobs-export.csv', 'text/csv');
+}
+
+function exportJSON() {
+    if (!lastDisplayedJobs.length) return;
+    const json = JSON.stringify(lastDisplayedJobs, null, 2);
+    downloadFile(json, 'jobs-export.json', 'application/json');
+}
+
+function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 async function checkApiHealth() {

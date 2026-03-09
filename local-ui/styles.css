@@ -1151,3 +1151,88 @@ a.btn {
     text-decoration: none;
 }
 .job-meta-item.job-copy-chatgpt-btn:hover { text-decoration: underline; }
+
+/* Quick filter chips */
+.quick-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 10px 0;
+}
+.quick-filters-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.chip {
+    font-size: 0.8rem;
+    padding: 5px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+}
+.chip:hover {
+    border-color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--primary-color);
+}
+.chip-active {
+    background: var(--primary-color) !important;
+    color: #fff !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* Source stats badges */
+.source-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0;
+}
+.source-badge {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.source-badge:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+.source-badge strong {
+    color: var(--text-primary);
+    margin-left: 4px;
+}
+
+/* Export buttons */
+.export-btns {
+    display: flex;
+    gap: 6px;
+}
+.results-header .btn-sm {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+}
+.results-header .btn-sm:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}

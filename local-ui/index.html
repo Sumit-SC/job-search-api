@@ -119,6 +119,17 @@
             <div id="step3-card" class="card card-step3 hidden" style="padding: 1.5rem 1.75rem;">
                 <h2 style="margin-bottom: 0.5rem;">Search and Filter Jobs</h2>
                 <p class="description" style="margin-bottom: 1rem;">Step 3: Narrow and rank what is already loaded in memory for fast iterative analysis.</p>
+                <div class="quick-filters">
+                    <span class="quick-filters-label">Quick:</span>
+                    <button type="button" class="chip" data-preset="pune">Pune</button>
+                    <button type="button" class="chip" data-preset="remote-india">Remote India</button>
+                    <button type="button" class="chip" data-preset="remote-anywhere">Remote Anywhere</button>
+                    <button type="button" class="chip" data-preset="data-analyst">Data Analyst</button>
+                    <button type="button" class="chip" data-preset="analytics-engineer">Analytics Engineer</button>
+                    <button type="button" class="chip" data-preset="entry-level">Entry Level (0-2 YOE)</button>
+                    <button type="button" class="chip" data-preset="mid-level">Mid Level (2-5 YOE)</button>
+                    <button type="button" class="chip" data-preset="clear">Clear All Filters</button>
+                </div>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group">
@@ -126,8 +137,24 @@
                             <input type="text" id="search-query" placeholder="e.g., python developer">
                         </div>
                         <div class="input-group">
-                            <label for="search-location-text">Location contains:</label>
-                            <input type="text" id="search-location-text" placeholder="e.g., Pune, India, US, Europe">
+                            <label for="search-location-text">Location:</label>
+                            <div style="display:flex;gap:6px;">
+                                <select id="search-location-preset" style="width:auto;min-width:100px;">
+                                    <option value="">Custom...</option>
+                                    <option value="pune">Pune</option>
+                                    <option value="remote">Remote</option>
+                                    <option value="india">India</option>
+                                    <option value="bangalore">Bangalore</option>
+                                    <option value="mumbai">Mumbai</option>
+                                    <option value="hyderabad">Hyderabad</option>
+                                    <option value="delhi">Delhi / NCR</option>
+                                    <option value="chennai">Chennai</option>
+                                    <option value="us">United States</option>
+                                    <option value="uk">United Kingdom</option>
+                                    <option value="europe">Europe</option>
+                                </select>
+                                <input type="text" id="search-location-text" placeholder="or type custom location" style="flex:1;">
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="search-days">Days:</label>
@@ -155,6 +182,9 @@
                                 <option value="stackoverflow">Stack Overflow</option>
                                 <option value="linkedin">LinkedIn</option>
                                 <option value="naukri">Naukri</option>
+                                <option value="justremote">JustRemote</option>
+                                <option value="dailyremote">DailyRemote</option>
+                                <option value="remoteindian">RemoteIndian</option>
                             </select>
                             <small class="input-hint">Hold Ctrl/Cmd to select multiple; leave empty for all sources.</small>
                         </div>
@@ -210,7 +240,12 @@
             <div class="results-header">
                 <h2 id="results-title">Jobs</h2>
                 <div id="results-count" class="results-count"></div>
+                <div class="export-btns">
+                    <button type="button" id="export-csv-btn" class="btn-sm" title="Export filtered results as CSV">CSV</button>
+                    <button type="button" id="export-json-btn" class="btn-sm" title="Export filtered results as JSON">JSON</button>
+                </div>
             </div>
+            <div id="source-stats" class="source-stats"></div>
             <div id="jobs-container" class="jobs-container">
                 <div class="empty-state">
                     <p>👆 Use the controls above to refresh or search for jobs</p>

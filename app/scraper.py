@@ -2597,6 +2597,114 @@ async def scrape_glassdoor(days: int = 3, query: str | None = None, browser: Opt
         return []
 
 
+async def scrape_justremote(days: int = 7, query: str | None = None) -> List[Job]:
+    """JustRemote RSS feed — remote jobs."""
+    url = "https://justremote.co/remote-jobs/feed.xml"
+    async with _make_client() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    jobs: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", None) or getattr(entry, "description", "") or ""
+        pub_date = getattr(entry, "published", None) or getattr(entry, "updated", "") or ""
+        dt = _parse_date(pub_date)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        jobs.append(Job(
+            id=f"justremote_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary[:500] if summary else "",
+            source="justremote",
+            date=dt or datetime.utcnow(),
+            tags=["rss"],
+        ))
+    logger.info(f"Scraped {len(jobs)} jobs from justremote")
+    return jobs
+
+
+async def scrape_dailyremote(days: int = 7, query: str | None = None) -> List[Job]:
+    """DailyRemote RSS feed — remote jobs."""
+    url = "https://dailyremote.com/remote-jobs/feed"
+    async with _make_client() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    jobs: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", None) or getattr(entry, "description", "") or ""
+        pub_date = getattr(entry, "published", None) or getattr(entry, "updated", "") or ""
+        dt = _parse_date(pub_date)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        jobs.append(Job(
+            id=f"dailyremote_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary[:500] if summary else "",
+            source="dailyremote",
+            date=dt or datetime.utcnow(),
+            tags=["rss"],
+        ))
+    logger.info(f"Scraped {len(jobs)} jobs from dailyremote")
+    return jobs
+
+
+async def scrape_remoteindian(days: int = 7, query: str | None = None) -> List[Job]:
+    """RemoteIndian RSS feed — remote jobs focused on India."""
+    url = "https://remoteindian.com/feed"
+    async with _make_client() as client:
+        xml = await fetch_text(client, url)
+    if not xml:
+        return []
+    feed = feedparser.parse(xml)
+    jobs: List[Job] = []
+    for entry in feed.entries:
+        title = getattr(entry, "title", "") or ""
+        link = getattr(entry, "link", "") or ""
+        summary = getattr(entry, "summary", None) or getattr(entry, "description", "") or ""
+        pub_date = getattr(entry, "published", None) or getattr(entry, "updated", "") or ""
+        dt = _parse_date(pub_date)
+        if not _within_days(dt, days):
+            continue
+        if not _matches_query(title, summary, query):
+            continue
+        if not link:
+            continue
+        jobs.append(Job(
+            id=f"remoteindian_{hash(link)}",
+            title=title,
+            company="Unknown",
+            location="Remote",
+            url=link,
+            description=summary[:500] if summary else "",
+            source="remoteindian",
+            date=dt or datetime.utcnow(),
+            tags=["rss"],
+        ))
+    logger.info(f"Scraped {len(jobs)} jobs from remoteindian")
+    return jobs
+
+
 SCRAPER_REGISTRY = {
     "greenhouse": scrape_greenhouse,
     "lever": scrape_lever,
@@ -2620,6 +2728,9 @@ SCRAPER_REGISTRY = {
     "arbeitnow": scrape_arbeitnow,
     "jobicy": scrape_jobicy_api,
     "workingnomads": scrape_workingnomads,
+    "justremote": scrape_justremote,
+    "dailyremote": scrape_dailyremote,
+    "remoteindian": scrape_remoteindian,
 }
 
 

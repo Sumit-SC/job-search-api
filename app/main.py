@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import Job, JobsResponse, GroupedByCurrencyResponse
 from .scraper import scrape_all, get_proxy_stats
-from .storage import load_jobs, save_jobs
+from .storage import load_jobs, save_jobs, load_saved_at
 from .cache import (
     get_jobspy_cache,
     get_rssjobs_cache,
@@ -368,16 +368,35 @@ async def get_jobs(
     yoe_min: Optional[int] = Query(None, ge=0, description="Filter: minimum years of experience"),
     yoe_max: Optional[int] = Query(None, ge=0, description="Filter: maximum years of experience (excludes 5+ if not specified)"),
     target_yoe: int = Query(2, ge=0, le=10, description="Target YOE for match_score calculation (default: 2)"),
+    remote_only: bool = Query(False, description="If true, only include remote/WFH/distributed jobs (simple location text match)."),
     include_stats: bool = Query(False, description="Include system resource stats in response"),
 ) -> JobsResponse:
     try:
         all_jobs: List[Job] = load_jobs()
+        saved_at_raw = load_saved_at()
         if not all_jobs:
-            return JobsResponse(ok=True, count=0, jobs=[])
+            return JobsResponse(ok=True, count=0, jobs=[], generated_at=dateparser.parse(saved_at_raw) if saved_at_raw else None)
+
+        def _is_remote_text(loc: str) -> bool:
+            t = (loc or "").lower()
+            return any(k in t for k in ["remote", "wfh", "work from home", "distributed", "anywhere", "home-based", "telecommute"])
+
+        def _matches_query(job: Job, query: str | None) -> bool:
+            if not query:
+                return True
+            text = f"{job.title} {job.company} {job.location} {job.description}".lower()
+            q_raw = query.lower().strip()
+            if not q_raw:
+                return True
+            # Token-based match (much less brittle than full substring).
+            tokens = [t for t in q_raw.replace("/", " ").replace(",", " ").split() if t and t not in {"and", "or", "the", "a", "an", "for", "to"}]
+            # Prefer keeping analyst-ish roles even if query is short.
+            if any(k in text for k in ["analyst", "analytics", "bi", "business intelligence", "data analyst", "product analyst", "business analyst"]):
+                return True
+            return any(tok in text for tok in tokens) if tokens else (q_raw in text)
 
         cutoff = datetime.utcnow() - timedelta(days=days)
         filtered: List[Job] = []
-        q_lower = q.lower() if q else None
 
         for job in all_jobs:
             # Date filter - normalize datetime before comparison
@@ -387,11 +406,12 @@ async def get_jobs(
             # Source filter
             if source and job.source != source:
                 continue
-            # Query filter
-            if q_lower:
-                text = f"{job.title} {job.company} {job.location} {job.description}".lower()
-                if q_lower not in text:
-                    continue
+            # Remote-only filter (simple location text check)
+            if remote_only and not _is_remote_text(job.location):
+                continue
+            # Query filter (token-based)
+            if not _matches_query(job, q):
+                continue
             # YOE filter
             if yoe_min is not None:
                 if job.yoe_max is not None and job.yoe_max < yoe_min:
@@ -403,11 +423,13 @@ async def get_jobs(
                     continue
                 if job.yoe_max is not None and job.yoe_max > yoe_max:
                     continue
-            # Exclude 5+ YOE by default (unless explicitly requested)
-            if yoe_max is None and job.yoe_min is not None and job.yoe_min >= 5:
-                continue
-            if job.yoe_max is not None and job.yoe_max >= 5 and (yoe_max is None or yoe_max < 5):
-                continue
+            # Default experience preference (when not specified):
+            # keep jobs with unknown yoe, but exclude jobs that clearly require 4+ years.
+            if yoe_min is None and yoe_max is None:
+                if job.yoe_min is not None and job.yoe_min >= 4:
+                    continue
+                if job.yoe_max is not None and job.yoe_max > 3:
+                    continue
             
             # Calculate/update match_score if not set
             if job.match_score is None:
@@ -439,10 +461,11 @@ async def get_jobs(
             response = JobsResponse(
                 ok=True, count=len(limited), jobs=limited,
                 total=total, page=page, per_page=per_page,
+                generated_at=dateparser.parse(saved_at_raw) if saved_at_raw else None,
             )
         else:
             limited = filtered[:limit]
-            response = JobsResponse(ok=True, count=len(limited), jobs=limited)
+            response = JobsResponse(ok=True, count=len(limited), jobs=limited, generated_at=dateparser.parse(saved_at_raw) if saved_at_raw else None)
         
         # Add system stats if requested
         if include_stats:
@@ -647,7 +670,7 @@ async def refresh_jobs(
     jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
     save_jobs(jobs)
     
-    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs, generated_at=datetime.utcnow())
     
     # Add system stats if requested
     if include_stats:
@@ -704,6 +727,7 @@ async def jobspy_jobs(
     """
     Fetch jobs from python-jobspy. Use sites= or preset= (popular, remote, all) to choose boards.
     Supported sites: indeed, linkedin, zip_recruiter, glassdoor, google, bayt, naukri, bdjobs.
+    Note: some sites (notably Naukri) may intermittently require reCAPTCHA and will then return 0 results.
     Responses are cached server-side for 15 minutes; use skip_cache=true to force a fresh scrape.
     """
     try:
@@ -732,7 +756,7 @@ async def jobspy_jobs(
         country_indeed=(country or "usa").strip().lower(),
         is_remote=is_remote,
     )
-    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs, generated_at=datetime.utcnow())
     payload = response.model_dump(mode="json")
     cache.set(key, payload)
     return JSONResponse(content=payload, headers=_jobs_response_headers(False))
@@ -870,7 +894,7 @@ async def rssjobs_proxy(
                 logger.warning(f"Error processing rssjobs.app entry: {e}")
                 continue
 
-        response = JobsResponse(ok=True, count=len(jobs), jobs=jobs)
+        response = JobsResponse(ok=True, count=len(jobs), jobs=jobs, generated_at=datetime.utcnow())
         payload = response.model_dump(mode="json")
         cache.set(key, payload)
         return JSONResponse(content=payload, headers=_jobs_response_headers(False, max_age=600))

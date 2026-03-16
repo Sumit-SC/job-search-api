@@ -1112,6 +1112,8 @@ async def scrape_hiring_cafe(days: int = 3, query: str | None = None) -> List[Jo
     if not data or not isinstance(data, dict):
         return []
     results = data.get("results", [])
+    if not isinstance(results, list):
+        return []
     out: List[Job] = []
     for item in results:
         if item.get("is_expired"):

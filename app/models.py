@@ -26,6 +26,7 @@ _JOBS_RESPONSE_EXAMPLE = {
     "ok": True,
     "count": 1,
     "jobs": [_JOB_EXAMPLE],
+    "generated_at": "2025-02-15T12:05:00Z",
     "total": None,
     "page": None,
     "per_page": None,
@@ -83,6 +84,8 @@ class JobsResponse(BaseModel):
     ok: bool = True
     count: int
     jobs: List[Job]
+    # When this response dataset was generated/saved (useful for UI "Updated at")
+    generated_at: Optional[datetime] = None
     # Pagination (optional; set when page/per_page are used)
     total: Optional[int] = None
     page: Optional[int] = None

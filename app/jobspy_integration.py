@@ -14,15 +14,17 @@ JOBSPY_SUPPORTED_SITES = [
     "indeed", "linkedin", "zip_recruiter", "glassdoor", "google",
     "bayt", "naukri", "bdjobs",
 ]
+
+# Sites that frequently hard-block automation with reCAPTCHA / WAF.
+# We keep them supported (users can still try explicitly) but exclude from presets by default.
+JOBSPY_FLAKY_SITES_DEFAULT_OFF = {"naukri", "bayt", "bdjobs"}
 # Popular = major global boards + India-friendly boards
 JOBSPY_PRESET_POPULAR = [
     "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
-    "naukri", "bdjobs",
 ]
 # Remote = same plus Naukri/BDJobs so remote-India roles are included when available
 JOBSPY_PRESET_REMOTE = [
     "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
-    "naukri", "bdjobs",
 ]  # use location=Remote + is_remote
 JOBSPY_ALL_BOARDS = list(JOBSPY_SUPPORTED_SITES)
 
@@ -32,16 +34,18 @@ def resolve_jobspy_sites(sites: Optional[List[str]] = None, preset: Optional[str
     supported = set(JOBSPY_SUPPORTED_SITES)
     if sites:
         resolved = [s.strip().lower() for s in sites if s and s.strip() and s.strip().lower() in supported]
-        return resolved if resolved else list(JOBSPY_PRESET_POPULAR)
+        return resolved if resolved else [s for s in JOBSPY_PRESET_POPULAR if s in supported]
     if preset:
         p = preset.strip().lower()
         if p == "popular":
-            return list(JOBSPY_PRESET_POPULAR)
+            return [s for s in JOBSPY_PRESET_POPULAR if s in supported]
         if p == "remote":
-            return list(JOBSPY_PRESET_REMOTE)
+            return [s for s in JOBSPY_PRESET_REMOTE if s in supported]
         if p == "all":
-            return list(JOBSPY_ALL_BOARDS)
-    return list(JOBSPY_PRESET_POPULAR)
+            # Default-off flaky sites are included only when explicitly requested (sites=...),
+            # not through presets, to keep the API reliable.
+            return [s for s in JOBSPY_ALL_BOARDS if s in supported and s not in JOBSPY_FLAKY_SITES_DEFAULT_OFF]
+    return [s for s in JOBSPY_PRESET_POPULAR if s in supported]
 
 
 async def scrape_jobspy_sources(
@@ -76,6 +80,12 @@ async def scrape_jobspy_sources(
     search_query = (query or "data analyst").strip()
     loc_str = (location or "").strip()
     loc_lower = loc_str.lower()
+
+    # Normalize our UI-friendly remote presets to a JobSpy-friendly location string.
+    # Some sources (e.g., ZipRecruiter) behave badly when location is not a real place.
+    if loc_lower.startswith("remote"):
+        loc_str = "Remote"
+        loc_lower = "remote"
 
     # Infer remote filter if location suggests remote but caller did not set is_remote
     inferred_is_remote = is_remote
@@ -113,7 +123,11 @@ async def scrape_jobspy_sources(
             )
             return df.to_dict(orient="records") if df is not None and not df.empty else []
         except Exception as e:
-            logger.warning(f"jobspy site {s} failed: {e}")
+            msg = str(e)
+            if "recaptcha" in msg.lower():
+                logger.warning(f"jobspy site {s} blocked by recaptcha/WAF: {msg}")
+            else:
+                logger.warning(f"jobspy site {s} failed: {msg}")
             return []
 
     def _run() -> List[Job]:

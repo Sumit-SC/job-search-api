@@ -52,3 +52,16 @@ def save_jobs(jobs: List[Job]) -> None:
         "jobs": [j.model_dump(mode="json") for j in jobs],
     }
     DATA_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_saved_at() -> str | None:
+    """Return ISO timestamp (string) of last save, if available."""
+    if not DATA_FILE.exists():
+        return None
+    try:
+        raw = DATA_FILE.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        ts = data.get("saved_at")
+        return str(ts) if ts else None
+    except Exception:
+        return None

@@ -118,7 +118,7 @@ Temporarily disable date filtering to see if jobs are found but filtered out.
 ### LinkedIn Scraper (Line 734)
 - **Issue:** Hardcoded `f_TPR=r259200` (3 days) in URL
 - **Debug endpoint uses:** `days=7`
-- **Fix:** Make URL parameter dynamic based on `days` parameter
+- **Fix:** ✅ Done – `f_TPR` now uses `days * 86400` (1–30 days)
 
 ### Date Parsing
 - **Function:** `_parse_date()` (line 57)

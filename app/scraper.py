@@ -1301,7 +1301,9 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
         return []
     
     search_query = query or "data analyst"
-    url = f"https://www.linkedin.com/jobs/search?keywords={search_query.replace(' ', '%20')}&location=remote&f_TPR=r259200&f_E=2,3&f_TP=1"
+    # f_TPR = posted time range in seconds (r259200 = 3 days); make dynamic from days param
+    days_seconds = max(86400, min(days * 86400, 2592000))  # 1 day to 30 days
+    url = f"https://www.linkedin.com/jobs/search?keywords={search_query.replace(' ', '%20')}&location=remote&f_TPR=r{days_seconds}&f_E=2,3&f_TP=1"
     
     try:
         should_close_browser = browser is None
@@ -1465,11 +1467,15 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
             await page.close()
         
         out: List[Job] = []
+        date_filtered = 0
+        query_filtered = 0
         for item in jobs_data:
             dt = _parse_date(item.get("date", ""))
             if not _within_days(dt, days):
+                date_filtered += 1
                 continue
             if not _matches_query(item.get("title", ""), item.get("company", ""), query):
+                query_filtered += 1
                 continue
             job = Job(
                 id=f"linkedin_{hash(item.get('url', ''))}",
@@ -1483,7 +1489,7 @@ async def scrape_linkedin(days: int = 3, query: str | None = None, browser: Opti
                 tags=["headless"],
             )
             out.append(job)
-        logger.info(f"Scraped {len(out)} jobs from linkedin")
+        logger.info(f"LinkedIn: raw={len(jobs_data)}, after_date_filter={date_filtered}, after_query_filter={query_filtered}, final={len(out)}")
         return out
     except Exception as e:
         logger.error(f"Error scraping linkedin: {e}", exc_info=True)
@@ -1500,7 +1506,8 @@ async def scrape_indeed_headless(days: int = 3, query: str | None = None, browse
         return []
     
     search_query = query or "data analyst"
-    url = f"https://www.indeed.com/jobs?q={search_query.replace(' ', '+')}&l=remote&radius=0&fromage=3"
+    fromage = max(1, min(days, 30))  # Indeed fromage: 1–30 days
+    url = f"https://www.indeed.com/jobs?q={search_query.replace(' ', '+')}&l=remote&radius=0&fromage={fromage}"
     
     try:
         if browser is None:
@@ -2832,11 +2839,23 @@ async def scrape_all(
 
     tasks = []
 
+    # Concurrency control: prevents bursts from causing rate limits/timeouts.
+    # You can tune it via SCRAPER_CONCURRENCY env var.
+    max_concurrency = int(os.getenv("SCRAPER_CONCURRENCY", "4"))
+    max_concurrency = max(1, min(max_concurrency, 10))
+    sem = asyncio.Semaphore(max_concurrency)
+
     if mode in ("rss", "all"):
         for name, scraper_fn in SCRAPER_REGISTRY.items():
             if source_filter and name not in source_filter:
                 continue
-            tasks.append(scraper_fn(days=days, query=query))
+        
+            # Run each scraper under a semaphore to cap concurrency.
+            async def _runner(fn=scraper_fn):
+                async with sem:
+                    return await fn(days=days, query=query)
+
+            tasks.append(_runner())
 
     # Optional: python-jobspy backend for big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
     if use_jobspy and mode in ("headless", "all"):
@@ -2859,8 +2878,31 @@ async def scrape_all(
     if enable_headless and mode in ("headless", "all"):
         # Use a shared browser instance for efficiency
         try:
+            # Optional: rotate headless browser traffic through JOB_PROXY_URLS
+            # (applies one proxy per scrape_all run; safer than rotating per request).
+            proxy_url = _get_proxy()
+            playwright_proxy = None
+            if proxy_url:
+                parsed = urlparse(str(proxy_url).trim())
+                proxy_server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.scheme and parsed.hostname and parsed.port else None
+                if proxy_server:
+                    playwright_proxy = {"server": proxy_server}
+                    if parsed.username:
+                        playwright_proxy["username"] = parsed.username
+                    if parsed.password:
+                        playwright_proxy["password"] = parsed.password
+                else:
+                    # Fallback: if proxy_url lacks scheme, try http://
+                    u = str(proxy_url).trim()
+                    if not u.startswith("http://") and not u.startswith("https://"):
+                        u = "http://" + u
+                    parsed2 = urlparse(u)
+                    if parsed2.hostname and parsed2.port:
+                        proxy_server2 = f"{parsed2.scheme}://{parsed2.hostname}:{parsed2.port}"
+                        playwright_proxy = {"server": proxy_server2}
+
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(headless=True, proxy=playwright_proxy)
                 try:
                     headless_tasks = [
                         fn(browser) for name, fn in HEADLESS_SCRAPERS.items()

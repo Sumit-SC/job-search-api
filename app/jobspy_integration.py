@@ -17,15 +17,12 @@ JOBSPY_SUPPORTED_SITES = [
 
 # Sites that frequently hard-block automation with reCAPTCHA / WAF.
 # We keep them supported (users can still try explicitly) but exclude from presets by default.
-JOBSPY_FLAKY_SITES_DEFAULT_OFF = {"naukri", "bayt", "bdjobs"}
-# Popular = major global boards + India-friendly boards
-JOBSPY_PRESET_POPULAR = [
-    "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
-]
-# Remote = same plus Naukri/BDJobs so remote-India roles are included when available
-JOBSPY_PRESET_REMOTE = [
-    "indeed", "linkedin", "zip_recruiter", "google", "glassdoor",
-]  # use location=Remote + is_remote
+JOBSPY_FLAKY_SITES_DEFAULT_OFF = {"naukri", "bayt", "bdjobs", "google", "zip_recruiter", "glassdoor"}
+
+# Stable presets: maximize real yields.
+# jobspy supports more sites, but several of them hard-block automation or frequently return 0.
+JOBSPY_PRESET_POPULAR = ["indeed", "linkedin"]
+JOBSPY_PRESET_REMOTE = ["indeed", "linkedin"]  # use location=Remote + is_remote
 JOBSPY_ALL_BOARDS = list(JOBSPY_SUPPORTED_SITES)
 
 

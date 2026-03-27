@@ -101,6 +101,12 @@ Railway detects the Dockerfile and deploys. Start command is set in the Dockerfi
 
 ---
 
+## Deploy to Koyeb (no credit card)
+
+See **[`KOYEB.md`](KOYEB.md)**.
+
+---
+
 ## Environment variables
 
 Summary (see [Deploy → Set environment variables](#2-set-environment-variables) for how to set them on Railway):

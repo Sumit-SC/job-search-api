@@ -1,4 +1,6 @@
-# Playwright image includes Chromium for headless scrapers (LinkedIn, Indeed, Naukri).
+# Koyeb-ready container.
+# NOTE: This uses the Playwright base image (includes Chromium) so headless can be enabled later.
+# If you want a smaller image (RSS/API only), we can switch to python:3.11-slim.
 FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
 
 WORKDIR /app
@@ -11,6 +13,10 @@ COPY local-ui /app/local-ui
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
+ENV ENABLE_HEADLESS=0
+ENV USE_JOBSPY=0
+ENV SCRAPER_CONCURRENCY=3
+ENV JOBS_SCRAPER_DATA_DIR=/app/data
 
 # Railway, Render, Cloud Run set PORT at runtime. Default 8000 for local Docker.
 EXPOSE 8000

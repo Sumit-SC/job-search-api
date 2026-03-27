@@ -804,7 +804,18 @@ async def rssjobs_proxy(
         if use_custom_feed:
             fetch_url = feed_url.strip()
         else:
-            fetch_url = f"https://rssjobs.app/feeds?keywords={kw}&location={loc}"
+            # rssjobs.app requires you to create a feed first.
+            # The dynamic keywords+location endpoint is not reliable (and appears 404).
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "ok": False,
+                    "count": 0,
+                    "jobs": [],
+                    "error": "Provide feed_url. rssjobs.app requires creating a feed first (go to https://rssjobs.app/ and paste the generated RSS URL)."
+                },
+                headers=_jobs_response_headers(False),
+            )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(fetch_url)

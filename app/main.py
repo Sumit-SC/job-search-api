@@ -9,8 +9,12 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 
-from dotenv import load_dotenv
-load_dotenv()
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    # Optional dependency for local/dev; Railway can provide env vars directly.
+    pass
 
 import html
 import httpx
@@ -32,6 +36,17 @@ from .cache import (
     rssjobs_cache_key,
 )
 from . import storage
+from .agent import (
+    AgentProfile,
+    AgentRunResult,
+    diff_jobs,
+    filter_jobs,
+    load_last_run_jobs,
+    load_profile,
+    save_last_run,
+    save_profile,
+    enrich_and_score,
+)
 
 
 def normalize_datetime(dt: datetime | None) -> datetime | None:
@@ -928,6 +943,82 @@ async def rssjobs_proxy(
             status_code=200,
             content={"ok": False, "count": 0, "jobs": [], "error": f"Error: {str(e)}"},
             headers=_jobs_response_headers(False),
+        )
+
+
+@app.get("/agent/profile", response_model=AgentProfile)
+async def get_agent_profile() -> AgentProfile:
+    """Get the saved job-search agent profile (requirements)."""
+    return load_profile()
+
+
+@app.put("/agent/profile", response_model=AgentProfile)
+async def put_agent_profile(profile: AgentProfile) -> AgentProfile:
+    """Save/replace the job-search agent profile (requirements)."""
+    save_profile(profile)
+    return profile
+
+
+@app.post("/agent/run", response_model=AgentRunResult)
+async def run_agent(
+    skip_cache: bool = Query(False, description="If true, bypass internal cache where possible"),
+) -> AgentRunResult:
+    """
+    Run the job-search agent using the saved profile:
+    - pulls jobs via existing scrapers (rss/headless/all)
+    - enriches metadata (YOE/salary/visa)
+    - scores + filters based on profile requirements
+    - returns added/removed vs last run
+    - stores snapshot for next diff
+    """
+    profile = load_profile()
+    try:
+        jobs = await scrape_all(
+            days=profile.days,
+            query=profile.query,
+            enable_headless=profile.enable_headless,
+            mode=profile.mode,
+            sources=profile.sources,
+        )
+
+        scored: List[Job] = []
+        for j in jobs:
+            try:
+                scored.append(enrich_and_score(j, profile))
+            except Exception:
+                if j.match_score is None:
+                    j.match_score = 50.0
+                if (j.rank or 0.0) <= 0.0 and j.match_score is not None:
+                    j.rank = float(j.match_score)
+                scored.append(j)
+
+        filtered = filter_jobs(scored, profile)
+        filtered.sort(key=lambda x: float(x.match_score or 0.0), reverse=True)
+
+        prev = load_last_run_jobs()
+        added, removed = diff_jobs(prev, filtered)
+
+        save_last_run(profile, filtered)
+
+        return AgentRunResult(
+            ok=True,
+            profile=profile,
+            generated_at=datetime.now(timezone.utc),
+            count=len(filtered),
+            jobs=filtered,
+            added=added,
+            removed=removed,
+        )
+    except Exception as e:
+        return AgentRunResult(
+            ok=False,
+            profile=profile,
+            generated_at=datetime.now(timezone.utc),
+            count=0,
+            jobs=[],
+            added=[],
+            removed=[],
+            error=str(e),
         )
 
 

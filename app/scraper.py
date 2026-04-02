@@ -2865,6 +2865,8 @@ async def scrape_all(
     # Headless scraper name mapping for source_filter
     HEADLESS_SCRAPERS = {
         "linkedin": lambda b: scrape_linkedin(days=days, query=query, browser=b),
+        # UI uses source id `indeed` (not `indeed_headless`), but the implementation is scrape_indeed_headless.
+        "indeed": lambda b: scrape_indeed_headless(days=days, query=query, browser=b),
         "indeed_headless": lambda b: scrape_indeed_headless(days=days, query=query, browser=b),
         "naukri": lambda b: scrape_naukri(days=days, query=query, browser=b),
         "hirist": lambda b: scrape_hirist(days=days, query=query, browser=b),

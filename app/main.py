@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models import Job, JobsResponse, GroupedByCurrencyResponse
+from .models import Job, JobsResponse, GroupedByCurrencyResponse, WebSearchResponse, WebSearchResult
 from .scraper import scrape_all, get_proxy_stats
 from .storage import load_jobs, save_jobs, load_saved_at
 from .cache import (
@@ -99,6 +99,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/websearch", response_model=WebSearchResponse)
+async def websearch(
+    q: Optional[str] = Query(None, description="Search query, e.g. data analyst remote"),
+    provider: str = Query("serpapi", description="serpapi | brave"),
+    engine: str = Query("google", description="When provider=serpapi: google | bing | ..."),
+    location: Optional[str] = Query(None, description="Optional search location hint (provider-specific)"),
+    limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+) -> WebSearchResponse:
+    """
+    Search job postings via a search-engine API (better coverage than scraping individual boards).
+
+    Notes:
+    - This endpoint requires API keys (provider-specific):
+      - SERPAPI_API_KEY for provider=serpapi
+      - BRAVE_SEARCH_API_KEY for provider=brave
+    - Returns *links* (not full job details).
+    """
+    from .websearch import WebSearchError, websearch_jobs
+
+    query = (q or "").strip()
+    if not query:
+        return WebSearchResponse(ok=True, count=0, results=[])
+
+    try:
+        items = await websearch_jobs(q=query, provider=provider, engine=engine, num=limit, location=location)
+        results = [
+            WebSearchResult(title=i.title, url=i.url, snippet=i.snippet or "", source=i.source or "websearch")
+            for i in items
+        ]
+        return WebSearchResponse(ok=True, count=len(results), results=results)
+    except WebSearchError as e:
+        return WebSearchResponse(ok=False, count=0, results=[], error=str(e))
+    except Exception as e:
+        return WebSearchResponse(ok=False, count=0, results=[], error=f"websearch failed: {e}")
 
 # Serve local-ui static files on Railway (and locally) at /ui
 _LOCAL_UI_DIR = Path(__file__).resolve().parent.parent / "local-ui"

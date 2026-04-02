@@ -1,4 +1,4 @@
-// API base: ?api_base=URL override, else same-origin (Railway /ui/ or localhost), else fallback
+// API base: ?api_base=URL override, else same-origin (/ui/ on Koyeb/Railway/local), else localhost
 function getRssjobsApiBase() {
     if (typeof window === 'undefined' || !window.location) return 'http://localhost:8000';
     const params = new URLSearchParams(window.location.search);
@@ -6,7 +6,7 @@ function getRssjobsApiBase() {
     if (fromQuery && fromQuery.startsWith('http')) return fromQuery.replace(/\/$/, '');
     const origin = window.location.origin;
     if (origin && origin !== 'null' && origin !== 'file://') return origin;
-    return 'https://job-search-api-production-5d5d.up.railway.app';
+    return 'http://localhost:8000';
 }
 const RSSJOBS_API_BASE_URL = getRssjobsApiBase();
 

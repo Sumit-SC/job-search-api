@@ -40,6 +40,15 @@ Only the app-level vars matter:
 - `GREENHOUSE_BOARDS`, `LEVER_BOARDS`
 - `JOB_PROXY_URLS` (optional)
 
+## Frontend (analytics-lab)
+
+After deploy, copy your app URL (e.g. `https://your-service-xxx.koyeb.app`) into:
+
+- `analytics-lab/pages/jobs.html` — set `window.JOB_SEARCH_API_BASE` (same line as `YOUR-APP.koyeb.app` placeholder).
+- Optional: `analytics-lab/pages/test-analytics.html` — same variable for the API test section.
+
+On the Jobs page, choose **Backend → Koyeb**; the UI sets `window.JOB_PROXY_URL` to that base. Vercel (playground-serveless) remains the other radio option.
+
 ## Test after deploy
 
 - `GET /health`

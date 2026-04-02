@@ -102,3 +102,18 @@ class GroupedByCurrencyResponse(BaseModel):
     ok: bool = True
     currencies: Dict[str, List[Job]] = Field(default_factory=dict)  # { "USD": [Job,...], "INR": [Job,...] }
     error: Optional[str] = None
+
+
+class WebSearchResult(BaseModel):
+    """Lightweight result item from a web search provider (Google/Bing/etc)."""
+    title: str
+    url: HttpUrl
+    snippet: str = ""
+    source: str = "websearch"
+
+
+class WebSearchResponse(BaseModel):
+    ok: bool = True
+    count: int
+    results: List[WebSearchResult]
+    error: Optional[str] = None

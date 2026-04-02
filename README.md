@@ -1,6 +1,8 @@
 # Job Search API — FastAPI + Playwright
 
-Python job scraper service: **22 RSS/HTTP sources** and **8 optional headless scrapers** (LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor). Built for **Railway** or any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).
+Python job scraper service: **22 RSS/HTTP sources** and **8 optional headless scrapers** (LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor). Deploy on **[Koyeb](KOYEB.md)** (Docker, free tier) or **Railway** / any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).
+
+**Frontend:** In `analytics-lab/pages/jobs.html`, set `window.JOB_SEARCH_API_BASE` to your deployed URL and choose **Backend → Koyeb** on the Jobs page.
 
 ---
 
@@ -8,7 +10,7 @@ Python job scraper service: **22 RSS/HTTP sources** and **8 optional headless sc
 
 - [What it does](#what-it-does)
 - [Run locally](#run-locally)
-- [Deploy to Railway](#deploy-to-railway)
+- [Deploy to Railway](#deploy-to-railway) · [Koyeb](KOYEB.md)
 - [Environment variables](#environment-variables)
 - [Docs & API reference](#docs--api-reference)
 - [Monitor & API docs](#monitor--api-docs)

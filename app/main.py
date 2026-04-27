@@ -427,6 +427,14 @@ async def get_jobs(
         saved_at_raw = load_saved_at()
         if not all_jobs:
             return JobsResponse(ok=True, count=0, jobs=[], generated_at=dateparser.parse(saved_at_raw) if saved_at_raw else None)
+        if (page is None) != (per_page is None):
+            return JobsResponse(
+                ok=False,
+                count=0,
+                jobs=[],
+                error="Use page and per_page together for pagination.",
+                generated_at=dateparser.parse(saved_at_raw) if saved_at_raw else None,
+            )
 
         def _is_remote_text(loc: str) -> bool:
             t = (loc or "").lower()
@@ -562,6 +570,85 @@ async def get_jobs(
         )
 
 
+@app.get("/jobs/search", response_model=JobsResponse)
+async def search_jobs(
+    q: Optional[str] = Query(None, description="Free text query"),
+    company: Optional[str] = Query(None, description="Filter by company name contains"),
+    location: Optional[str] = Query(None, description="Filter by location contains"),
+    days: int = Query(7, ge=1, le=30, description="Max age of jobs in days"),
+    source_in: Optional[str] = Query(None, description="Comma-separated sources (e.g. remotive,remoteok,jobspy_linkedin)"),
+    remote_only: bool = Query(False, description="If true, only include remote jobs"),
+    yoe_min: Optional[int] = Query(None, ge=0),
+    yoe_max: Optional[int] = Query(None, ge=0),
+    target_yoe: int = Query(2, ge=0, le=10),
+    visa_required: Optional[bool] = Query(None, description="If true, only jobs mentioning visa sponsorship"),
+    currency: Optional[str] = Query(None, description="Filter by salary currency code (USD, INR, GBP...)"),
+    min_match_score: Optional[float] = Query(None, ge=0, le=100, description="Minimum match score"),
+    job_type: Optional[str] = Query(None, description="Filter by job type (full_time, contract, etc.)"),
+    sort: Optional[str] = Query("relevance", description="date | relevance | source"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
+) -> JobsResponse:
+    """
+    Advanced search endpoint with richer filters and consistent pagination metadata.
+    """
+    base = await get_jobs(
+        q=q,
+        days=days,
+        limit=400,
+        source=None,
+        page=None,
+        per_page=None,
+        sort=sort,
+        yoe_min=yoe_min,
+        yoe_max=yoe_max,
+        target_yoe=target_yoe,
+        remote_only=remote_only,
+        include_stats=False,
+    )
+    if not base.ok:
+        return base
+
+    jobs = list(base.jobs or [])
+    company_l = (company or "").strip().lower()
+    location_l = (location or "").strip().lower()
+    currency_u = (currency or "").strip().upper()
+    job_type_l = (job_type or "").strip().lower()
+    source_set = {
+        s.strip().lower() for s in (source_in or "").split(",") if s and s.strip()
+    }
+
+    if company_l:
+        jobs = [j for j in jobs if company_l in (j.company or "").lower()]
+    if location_l:
+        jobs = [j for j in jobs if location_l in (j.location or "").lower()]
+    if source_set:
+        jobs = [j for j in jobs if (j.source or "").lower() in source_set]
+    if visa_required is True:
+        jobs = [j for j in jobs if j.visa_sponsorship is True]
+    if visa_required is False:
+        jobs = [j for j in jobs if j.visa_sponsorship is not True]
+    if currency_u:
+        jobs = [j for j in jobs if (j.currency or "").upper() == currency_u]
+    if min_match_score is not None:
+        jobs = [j for j in jobs if float(j.match_score or 0.0) >= float(min_match_score)]
+    if job_type_l:
+        jobs = [j for j in jobs if (j.job_type or "").strip().lower() == job_type_l]
+
+    total = len(jobs)
+    start = (page - 1) * per_page
+    paged = jobs[start : start + per_page]
+    return JobsResponse(
+        ok=True,
+        count=len(paged),
+        jobs=paged,
+        total=total,
+        page=page,
+        per_page=per_page,
+        generated_at=base.generated_at,
+    )
+
+
 @app.get("/jobs/grouped-by-currency", response_model=GroupedByCurrencyResponse)
 async def get_jobs_grouped_by_currency(
     q: Optional[str] = Query(None, description="Free text query"),
@@ -676,11 +763,16 @@ async def get_jobs_rss(
         if job.description:
             description_parts.append(job.description[:400])
         description = html.escape(" | ".join(p for p in description_parts if p))
-        pub_date = (
-            job.date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-            if job.date
-            else datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
-        )
+        job_dt: Optional[datetime] = None
+        if isinstance(job.date, datetime):
+            job_dt = normalize_datetime(job.date)
+        elif job.date:
+            try:
+                parsed_dt = dateparser.parse(str(job.date))
+                job_dt = normalize_datetime(parsed_dt) if parsed_dt else None
+            except Exception:
+                job_dt = None
+        pub_date = (job_dt or datetime.utcnow()).strftime("%a, %d %b %Y %H:%M:%S GMT")
         source_tag = html.escape(job.source or "")
         items_xml.append(
             f"<item><title>{title}</title><link>{link}</link>"

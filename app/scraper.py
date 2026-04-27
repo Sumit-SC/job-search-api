@@ -7,6 +7,7 @@ import os
 import random
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import httpx
 import feedparser
@@ -97,6 +98,24 @@ def _make_client(**kwargs) -> httpx.AsyncClient:
     client = httpx.AsyncClient(**kwargs)
     client._proxy_label = _mask_proxy(proxy) if proxy else None  # type: ignore[attr-defined]
     return client
+
+
+def _canonical_job_key(job: Job) -> str:
+    """Create a stable dedupe key across sources and tracking URLs."""
+    raw_url = str(job.url or "").strip()
+    if raw_url:
+        try:
+            parsed = urlparse(raw_url)
+            host = (parsed.netloc or "").lower()
+            path = (parsed.path or "").rstrip("/").lower()
+            if host and path:
+                return f"url:{host}{path}"
+        except Exception:
+            pass
+    title = (job.title or "").strip().lower()
+    company = (job.company or "").strip().lower()
+    location = (job.location or "").strip().lower()
+    return f"fallback:{title}|{company}|{location}"
 
 
 async def fetch_text(client: httpx.AsyncClient, url: str, timeout: float = 15.0, retries: int = 2) -> str:
@@ -2838,6 +2857,7 @@ async def scrape_all(
             source_filter = None
 
     tasks = []
+    task_names: List[str] = []
 
     # Concurrency control: prevents bursts from causing rate limits/timeouts.
     # You can tune it via SCRAPER_CONCURRENCY env var.
@@ -2856,11 +2876,13 @@ async def scrape_all(
                     return await fn(days=days, query=query)
 
             tasks.append(_runner())
+            task_names.append(name)
 
     # Optional: python-jobspy backend for big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
     if use_jobspy and mode in ("headless", "all"):
         if not source_filter or "jobspy" in source_filter:
             tasks.append(scrape_jobspy_sources(days=days, query=query))
+            task_names.append("jobspy")
 
     # Headless scraper name mapping for source_filter
     HEADLESS_SCRAPERS = {
@@ -2885,7 +2907,7 @@ async def scrape_all(
             proxy_url = _get_proxy()
             playwright_proxy = None
             if proxy_url:
-                parsed = urlparse(str(proxy_url).trim())
+                parsed = urlparse(str(proxy_url).strip())
                 proxy_server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.scheme and parsed.hostname and parsed.port else None
                 if proxy_server:
                     playwright_proxy = {"server": proxy_server}
@@ -2895,7 +2917,7 @@ async def scrape_all(
                         playwright_proxy["password"] = parsed.password
                 else:
                     # Fallback: if proxy_url lacks scheme, try http://
-                    u = str(proxy_url).trim()
+                    u = str(proxy_url).strip()
                     if not u.startswith("http://") and not u.startswith("https://"):
                         u = "http://" + u
                     parsed2 = urlparse(u)
@@ -2911,6 +2933,13 @@ async def scrape_all(
                         if not source_filter or name in source_filter
                     ]
                     tasks.extend(headless_tasks)
+                    task_names.extend(
+                        [
+                            name
+                            for name in HEADLESS_SCRAPERS.keys()
+                            if not source_filter or name in source_filter
+                        ]
+                    )
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                 finally:
                     await browser.close()
@@ -2927,21 +2956,22 @@ async def scrape_all(
     source_counts = {}
     
     for i, res in enumerate(results):
+        source_id = task_names[i] if i < len(task_names) else f"scraper_{i}"
         if isinstance(res, Exception):
             error_count += 1
-            logger.warning(f"Scraper {i} failed: {res}")
+            logger.warning(f"Scraper {source_id} failed: {res}")
             continue
         if not isinstance(res, list):
-            logger.warning(f"Scraper {i} returned non-list: {type(res)}")
+            logger.warning(f"Scraper {source_id} returned non-list: {type(res)}")
             continue
         
-        source_name = res[0].source if res and len(res) > 0 else f"scraper_{i}"
-        source_counts[source_name] = len(res)
+        source_counts[source_id] = len(res)
         
         for job in res:
-            if job.url in seen:
+            dedupe_key = _canonical_job_key(job)
+            if dedupe_key in seen:
                 continue
-            seen.add(job.url)
+            seen.add(dedupe_key)
             
             # Enhance job with metadata (YOE, visa, salary, currency)
             try:

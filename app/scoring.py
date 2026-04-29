@@ -99,22 +99,31 @@ def extract_salary_currency(text: str) -> Tuple[Optional[float], Optional[float]
     Patterns: "$50k-70k", "₹10L-15L", "£30k-40k", "50,000 - 70,000 USD", etc.
     """
     text_lower = text.lower()
-    
-    # Currency symbols/codes
-    currency_map = {
-        "$": "USD", "usd": "USD", "dollar": "USD",
-        "₹": "INR", "rs": "INR", "inr": "INR", "rupee": "INR", "lakh": "INR", "lpa": "INR",
-        "£": "GBP", "gbp": "GBP", "pound": "GBP",
-        "€": "EUR", "eur": "EUR", "euro": "EUR",
-        "sgd": "SGD", "singapore": "SGD",
-        "aed": "AED", "dirham": "AED",
-    }
-    
+
+    # Currency detection must avoid naive substring matches (e.g. "rs" inside normal words).
+    # Prefer symbols, then word-boundary codes/keywords.
     detected_currency = None
-    for symbol, code in currency_map.items():
-        if symbol in text_lower:
-            detected_currency = code
-            break
+    if "₹" in text:
+        detected_currency = "INR"
+    elif "£" in text:
+        detected_currency = "GBP"
+    elif "€" in text:
+        detected_currency = "EUR"
+    elif "$" in text:
+        detected_currency = "USD"
+    else:
+        patterns = [
+            (r"\bUSD\b|\bUS\s*DOLLAR(S)?\b|\bDOLLAR(S)?\b", "USD"),
+            (r"\bINR\b|\bRUPEE(S)?\b|\bRS\.?\b|\bLPA\b|\bLAKH(S)?\b", "INR"),
+            (r"\bGBP\b|\bPOUND(S)?\b", "GBP"),
+            (r"\bEUR\b|\bEURO(S)?\b", "EUR"),
+            (r"\bSGD\b|\bSINGAPORE\b", "SGD"),
+            (r"\bAED\b|\bDIRHAM(S)?\b", "AED"),
+        ]
+        for pat, code in patterns:
+            if re.search(pat, text, flags=re.IGNORECASE):
+                detected_currency = code
+                break
     
     # Pattern: "$50k-70k", "₹10L-15L", "£30k-40k"
     k_pattern = r'(\d+(?:\.\d+)?)\s*k\s*[-–—to]?\s*(\d+(?:\.\d+)?)\s*k'

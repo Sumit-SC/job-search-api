@@ -73,6 +73,7 @@ GET /jobs?q=data%20analyst&days=7&page=1&per_page=100
 | `yoe_min` | int | `null` | Minimum years of experience |
 | `yoe_max` | int | `null` | Maximum years of experience (excludes 5+ if not specified) |
 | `target_yoe` | int | `2` | Target YOE for match_score calculation (0-10) |
+| `role_profile` | string | `null` (on `/jobs`) / `data_analytics` (on `/jobs/search`) | Role preset filter + ranking boost. Use `data_analytics` to reduce random roles and prioritize analytics titles. |
 
 ### Other Parameters
 
@@ -107,6 +108,19 @@ curl "https://job-search-api-production-5d5d.up.railway.app/jobs?q=data%20analys
 ### Sort by Relevance
 ```bash
 curl "https://job-search-api-production-5d5d.up.railway.app/jobs?q=data%20analyst&sort=relevance&limit=400"
+```
+
+### Cleaner analytics search (recommended)
+Use the new advanced endpoint (defaults to analytics-focused filtering):
+
+```bash
+curl "https://job-search-api-production-5d5d.up.railway.app/jobs/search?q=data%20analyst&days=14&remote_only=true&page=1&per_page=25"
+```
+
+You can also apply the same preset to `/jobs`:
+
+```bash
+curl "https://job-search-api-production-5d5d.up.railway.app/jobs?q=data%20analyst&role_profile=data_analytics&sort=relevance&limit=100"
 ```
 
 ### Filter by YOE

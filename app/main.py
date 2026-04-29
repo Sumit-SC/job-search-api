@@ -420,6 +420,10 @@ async def get_jobs(
     yoe_max: Optional[int] = Query(None, ge=0, description="Filter: maximum years of experience (excludes 5+ if not specified)"),
     target_yoe: int = Query(2, ge=0, le=10, description="Target YOE for match_score calculation (default: 2)"),
     remote_only: bool = Query(False, description="If true, only include remote/WFH/distributed jobs (simple location text match)."),
+    role_profile: Optional[str] = Query(
+        None,
+        description="Optional role profile filter. Use role_profile=data_analytics to focus results to analytics roles.",
+    ),
     include_stats: bool = Query(False, description="Include system resource stats in response"),
 ) -> JobsResponse:
     try:
@@ -440,19 +444,113 @@ async def get_jobs(
             t = (loc or "").lower()
             return any(k in t for k in ["remote", "wfh", "work from home", "distributed", "anywhere", "home-based", "telecommute"])
 
+        import re
+
         def _matches_query(job: Job, query: str | None) -> bool:
             if not query:
                 return True
+            title_text = f"{job.title}".lower()
             text = f"{job.title} {job.company} {job.location} {job.description}".lower()
             q_raw = query.lower().strip()
             if not q_raw:
                 return True
-            # Token-based match (much less brittle than full substring).
-            tokens = [t for t in q_raw.replace("/", " ").replace(",", " ").split() if t and t not in {"and", "or", "the", "a", "an", "for", "to"}]
-            # Prefer keeping analyst-ish roles even if query is short.
-            if any(k in text for k in ["analyst", "analytics", "bi", "business intelligence", "data analyst", "product analyst", "business analyst"]):
+            stop = {"and", "or", "the", "a", "an", "for", "to", "of", "in", "on", "with", "at"}
+            tokens = [t for t in q_raw.replace("/", " ").replace(",", " ").split() if t and t not in stop]
+            if not tokens:
                 return True
-            return any(tok in text for tok in tokens) if tokens else (q_raw in text)
+
+            # Always allow exact phrase match.
+            if q_raw in text:
+                return True
+
+            # Common analytics keywords are *allowed*, but no longer auto-include everything.
+            title_role_kw = [
+                "data analyst",
+                "analyst",
+                "analytics",
+                "business intelligence",
+                "product analyst",
+                "business analyst",
+                "analytics engineer",
+                "decision scientist",
+            ]
+
+            def _title_role_hit(t: str) -> bool:
+                # Avoid tiny-substring false positives like "bi" in "mobile".
+                if re.search(r"\bbi\b", t, flags=re.IGNORECASE):
+                    return True
+                return any(k in t for k in title_role_kw)
+
+            # Generic queries ("data", "analyst", "data analyst") should still be forgiving,
+            # but must match either query tokens or analytics keywords.
+            is_generic = len(tokens) <= 2
+            if is_generic:
+                # For generic queries, require either token hits anywhere OR role keywords in the TITLE.
+                # This avoids matching random roles just because the description mentions "dashboards".
+                return any(tok in title_text for tok in tokens) or _title_role_hit(title_text)
+
+            # Specific queries: require at least 2 token hits (reduces random matches).
+            hits = sum(1 for tok in tokens if tok in text)
+            return hits >= 2 or _title_role_hit(title_text)
+
+        def _matches_role_profile(job: Job, profile: str | None) -> bool:
+            if not profile:
+                return True
+            p = str(profile).strip().lower()
+            if p in {"none", "off", "all"}:
+                return True
+            if p != "data_analytics":
+                return True
+            title = (job.title or "").lower()
+            # Allowlist (title-based) to keep relevance high.
+            allow = [
+                r"\bdata analyst\b",
+                r"\bproduct analyst\b",
+                r"\bbusiness analyst\b",
+                r"\bbi analyst\b",
+                r"\bbusiness intelligence\b",
+                r"\banalytics engineer\b",
+                r"\bdecision scientist\b",
+                r"\bmarketing analyst\b",
+                r"\bfinancial analyst\b",
+                r"\boperations analyst\b",
+                r"\banalyst\b",
+            ]
+            # Block obvious non-target analyst families.
+            block = [
+                r"\bquality analyst\b",
+                r"\bbpo\b",
+                r"\bcredit analyst\b",
+                r"\brisk analyst\b",
+                r"\bfraud\b",
+                r"\bcompliance\b",
+                r"\baudit\b",
+                r"\bimmobilien\b",
+                r"\baccounting\b",
+                r"\bcontroller\b",
+            ]
+            if any(re.search(pat, title, flags=re.IGNORECASE) for pat in block):
+                return False
+            return any(re.search(pat, title, flags=re.IGNORECASE) for pat in allow)
+
+        def _role_boost(job: Job, profile: str | None) -> float:
+            if not profile:
+                return 0.0
+            p = str(profile).strip().lower()
+            if p != "data_analytics":
+                return 0.0
+            title = (job.title or "").lower()
+            if re.search(r"\bdata analyst\b", title, flags=re.IGNORECASE):
+                return 20.0
+            if re.search(r"\b(product|business) analyst\b", title, flags=re.IGNORECASE):
+                return 15.0
+            if re.search(r"\b(bi analyst|business intelligence)\b", title, flags=re.IGNORECASE):
+                return 12.0
+            if re.search(r"\banalytics engineer\b", title, flags=re.IGNORECASE):
+                return 12.0
+            if re.search(r"\banalyst\b", title, flags=re.IGNORECASE):
+                return 6.0
+            return 0.0
 
         cutoff = datetime.utcnow() - timedelta(days=days)
         filtered: List[Job] = []
@@ -470,6 +568,9 @@ async def get_jobs(
                 continue
             # Query filter (token-based)
             if not _matches_query(job, q):
+                continue
+            # Role profile filter (optional)
+            if not _matches_role_profile(job, role_profile):
                 continue
             # YOE filter
             if yoe_min is not None:
@@ -501,12 +602,15 @@ async def get_jobs(
                     # If scoring fails, set default score
                     print(f"Warning: Match score calculation failed: {e}")
                     job.match_score = 50.0  # Default neutral score
+
+            # Derived rank used for relevance ordering (safe, does not affect stored data).
+            job.rank = float(job.match_score or 0.0) + _role_boost(job, role_profile)
             
             filtered.append(job)
 
         # Sort - normalize datetimes before sorting
         if sort == "relevance":
-            filtered.sort(key=lambda j: (j.match_score or 0.0, normalize_datetime(j.date) or datetime.min), reverse=True)
+            filtered.sort(key=lambda j: (float(j.rank or 0.0), normalize_datetime(j.date) or datetime.min), reverse=True)
         elif sort == "source":
             filtered.sort(key=lambda j: (j.source, normalize_datetime(j.date) or datetime.min), reverse=True)
         else:  # default: date
@@ -578,6 +682,10 @@ async def search_jobs(
     days: int = Query(7, ge=1, le=30, description="Max age of jobs in days"),
     source_in: Optional[str] = Query(None, description="Comma-separated sources (e.g. remotive,remoteok,jobspy_linkedin)"),
     remote_only: bool = Query(False, description="If true, only include remote jobs"),
+    role_profile: str = Query(
+        "data_analytics",
+        description="Role profile preset. Default data_analytics removes random roles and boosts analyst/analytics titles.",
+    ),
     yoe_min: Optional[int] = Query(None, ge=0),
     yoe_max: Optional[int] = Query(None, ge=0),
     target_yoe: int = Query(2, ge=0, le=10),
@@ -604,6 +712,7 @@ async def search_jobs(
         yoe_max=yoe_max,
         target_yoe=target_yoe,
         remote_only=remote_only,
+        role_profile=role_profile,
         include_stats=False,
     )
     if not base.ok:
@@ -801,14 +910,27 @@ async def refresh_jobs(
     days: int = Query(3, ge=1, le=30),
     headless: Optional[bool] = Query(None, description="Include headless scrapers (default: from ENABLE_HEADLESS env). Use headless=0 for quick RSS-only refresh."),
     mode: Optional[str] = Query(None, description="Source mode: 'rss', 'headless', or 'all' (default)."),
+    fetch_profile: Optional[str] = Query(
+        None,
+        description="Preset refresh profile: basic (reliable RSS/API only) or advanced (all configured sources).",
+    ),
     sources: Optional[str] = Query(None, description="Comma-separated source IDs to scrape (e.g. 'remoteok,remotive,hiring_cafe'). If empty, scrapes all."),
     include_stats: bool = Query(False, description="Include system resource stats in response"),
 ) -> JobsResponse:
+    profile = (fetch_profile or "").strip().lower()
     normalized_mode = (mode or "all").lower()
     if normalized_mode not in ("rss", "headless", "all"):
         normalized_mode = "all"
 
+    # Basic profile: use stable/maintained sources for fast, predictable refreshes.
+    basic_sources = ["remoteok", "remotive", "hiring_cafe", "arbeitnow", "jobicy", "workingnomads"]
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    if profile == "basic" and not source_list:
+        source_list = basic_sources
+        normalized_mode = "rss"
+    elif profile == "advanced" and mode is None:
+        normalized_mode = "all"
+
     enable_headless = headless if headless is not None else True
     jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
     save_jobs(jobs)

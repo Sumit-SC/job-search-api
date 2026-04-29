@@ -33,6 +33,35 @@ See **[SOURCES_STATUS.md](SOURCES_STATUS.md)** for board status and **[JOBS-SCRA
 
 ## Run locally
 
+### Recommended: uv (fast + modern)
+
+```bash
+# Install uv once (Windows PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Create virtual environment + install deps
+uv venv
+uv pip install -r requirements.txt
+uv pip install notebook
+
+# Optional: browser deps for headless scraping
+uv run playwright install chromium
+
+# Run API
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Run audit script
+uv run python scripts/job_api_audit.py
+
+# Run notebooks
+uv run jupyter notebook
+
+# One-command PowerShell setup
+.\setup_uv.ps1 -InstallPlaywright -RunAudit
+```
+
+### Standard pip (fallback)
+
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\Activate.ps1  |  macOS/Linux: source .venv/bin/activate
@@ -49,6 +78,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 - **UI:** http://localhost:8000/ui/  
 - **Refresh jobs:** `POST /refresh?q=data%20analyst&days=3`
+- **Refresh jobs (basic reliable profile):** `POST /refresh?q=data%20analyst&days=3&fetch_profile=basic`
+- **Refresh jobs (advanced full crawl):** `POST /refresh?q=data%20analyst&days=3&fetch_profile=advanced`
 - **Refresh (specific sources):** `POST /refresh?q=data%20analyst&days=3&sources=remoteok,remotive,indeed`
 - **List jobs:** `GET /jobs?days=3&limit=50`
 

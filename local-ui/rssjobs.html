@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RSSJobs.app Viewer - Local UI</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -32,24 +34,30 @@
             <div class="card">
                 <h2>RSSJobs.app</h2>
                 <p class="description rss-help-message">
-                    <strong>If you already created an RSS feed</strong> at rssjobs.app, paste the feed URL below and click <strong>Search</strong>. Otherwise, click <strong>Create feed</strong> to open rssjobs.app and create one first, then come back and paste the URL.
+                    <strong>If you already created an RSS feed</strong> at rssjobs.app, paste the feed URL below and
+                    click <strong>Search</strong>. Otherwise, click <strong>Create feed</strong> to open rssjobs.app and
+                    create one first, then come back and paste the URL.
                 </p>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group" style="flex: 1 1 100%;">
                             <label for="rss-feed-url">Feed URL (optional – paste after creating at rssjobs.app):</label>
-                            <input type="url" id="rss-feed-url" placeholder="https://rssjobs.app/feeds?keywords=...&location=..." value="" class="input-full">
+                            <input type="url" id="rss-feed-url"
+                                placeholder="https://rssjobs.app/feeds?keywords=...&location=..." value=""
+                                class="input-full">
                         </div>
                     </div>
                     <div class="input-row rss-action-row">
-                        <a id="rss-create-feed-btn" href="https://rssjobs.app" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Create feed on rssjobs.app</a>
+                        <a id="rss-create-feed-btn" href="https://rssjobs.app" target="_blank" rel="noopener noreferrer"
+                            class="btn btn-secondary">Create feed on rssjobs.app</a>
                         <button id="rss-fetch-btn" class="btn btn-primary">
                             <span class="btn-text">Search (fetch jobs)</span>
                             <span class="btn-loader" style="display: none;">⏳ Fetching...</span>
                         </button>
                     </div>
                     <p class="description" style="margin-top: 0.5rem; font-size: 0.9rem;">
-                        Or use Role + Location below to search without a custom feed (works for some combos like “data analyst” + “remote”).
+                        Or use Role + Location below to search without a custom feed (works for some combos like “data
+                        analyst” + “remote”).
                     </p>
                     <div class="input-row">
                         <div class="input-group">
@@ -81,27 +89,35 @@
             </div>
             <div id="rss-jobs-container" class="jobs-container">
                 <div class="empty-state">
-                    <p>👆 Create a feed at rssjobs.app, paste its URL above and click Search — or use Role + Location and click Search.</p>
+                    <p>👆 Create a feed at rssjobs.app, paste its URL above and click Search — or use Role + Location
+                        and click Search.</p>
                 </div>
             </div>
         </div>
 
         <footer class="page-footer">
             <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
-            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank" rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy" target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app" target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com" target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a href="https://events.colab.indevs.in" target="_blank" rel="noopener noreferrer">events.colab.indevs.in</a>.</p>
+            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank"
+                    rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank"
+                    rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy"
+                    target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app"
+                    target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com"
+                    target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a
+                    href="https://events.test.indevs.in" target="_blank"
+                    rel="noopener noreferrer">events.test.indevs.in</a>.</p>
         </footer>
     </div>
 
     <script src="theme.js" defer></script>
     <script src="analytics.js" defer></script>
     <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        if (typeof initAnalyticsTracking === "function") {
-          initAnalyticsTracking({ site: "railway-ui", baseEvent: "rssjobs", endpoint: "https://events.colab.indevs.in/api/events" });
-        }
-      });
+        document.addEventListener("DOMContentLoaded", function () {
+            if (typeof initAnalyticsTracking === "function") {
+                initAnalyticsTracking({ site: "railway-ui", baseEvent: "rssjobs", endpoint: "https://events.colab.indevs.in/api/events" });
+            }
+        });
     </script>
     <script src="rssjobs.js"></script>
 </body>
-</html>
 
+</html>

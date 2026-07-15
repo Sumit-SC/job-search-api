@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -20,7 +21,7 @@ import html
 import httpx
 import feedparser
 from dateutil import parser as dateparser
-from fastapi import FastAPI, Header, Query, Request, Response
+from fastapi import FastAPI, Header, Query, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -904,8 +905,85 @@ async def get_jobs_rss(
     return Response(content=rss_xml, media_type="application/rss+xml")
 
 
+async def notify_telegram(jobs: List[Job]) -> None:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
+    if not token or not chat_id:
+        return
+        
+    filter_mode = os.environ.get("TELEGRAM_FILTER_MODE", "all").strip().lower()
+    
+    if filter_mode == "filtered":
+        agent_prof = load_profile()
+        # Enrich, score, and filter
+        enriched_jobs = []
+        for j in jobs:
+            try:
+                enriched_jobs.append(enrich_and_score(j, agent_prof))
+            except Exception:
+                enriched_jobs.append(j)
+        jobs = filter_jobs(enriched_jobs, agent_prof)
+        
+    if not jobs:
+        return
+        
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for j in jobs:
+            title = j.title or "Unknown Role"
+            company = j.company or "Unknown Company"
+            location = j.location or "Remote/Global"
+            apply_url = j.url or ""
+            
+            # Clean up HTML characters
+            import html
+            title = html.escape(title)
+            company = html.escape(company)
+            location = html.escape(location)
+            
+            desc_snippet = ""
+            if j.description:
+                clean_desc = html.escape(j.description).replace("\n", " ").strip()
+                if len(clean_desc) > 200:
+                    desc_snippet = f"\n📝 <b>Description:</b> {clean_desc[:200]}...\n"
+                else:
+                    desc_snippet = f"\n📝 <b>Description:</b> {clean_desc}\n"
+                    
+            text = (
+                f"📢 <b>New Job Alert</b>\n\n"
+                f"💼 <b>Role:</b> {title}\n"
+                f"🏢 <b>Company:</b> {company}\n"
+                f"📍 <b>Location:</b> {location}\n"
+            )
+            if getattr(j, "match_score", None) is not None:
+                text += f"🎯 <b>Match Score:</b> {j.match_score}%\n"
+            if getattr(j, "yoe_min", None) is not None or getattr(j, "yoe_max", None) is not None:
+                y_min = j.yoe_min if j.yoe_min is not None else 0
+                y_max = j.yoe_max if j.yoe_max is not None else "+"
+                text += f"⏳ <b>Experience:</b> {y_min}-{y_max} YOE\n"
+            if j.source:
+                text += f"🏷️ <b>Source:</b> {j.source}\n"
+                
+            text += desc_snippet
+            text += f"\n🔗 <a href='{apply_url}'>Apply here</a>"
+            
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+            try:
+                await client.post(url, json=payload)
+                # Small sleep to avoid Telegram rate limits (max 30/second)
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending Telegram notification: {e}")
+
+
 @app.post("/refresh", response_model=JobsResponse)
 async def refresh_jobs(
+    background_tasks: BackgroundTasks,
     q: Optional[str] = Query("data analyst", description="Default search query"),
     days: int = Query(3, ge=1, le=30),
     headless: Optional[bool] = Query(None, description="Include headless scrapers (default: from ENABLE_HEADLESS env). Use headless=0 for quick RSS-only refresh."),
@@ -932,8 +1010,18 @@ async def refresh_jobs(
         normalized_mode = "all"
 
     enable_headless = headless if headless is not None else True
+    
+    # Load existing jobs before scraping to compute the difference for Telegram notifications
+    existing_jobs = load_jobs()
+    existing_urls = {j.url for j in existing_jobs if j.url}
+    
     jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
     save_jobs(jobs)
+    
+    # Identify new jobs
+    new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
+    if new_jobs and background_tasks:
+        background_tasks.add_task(notify_telegram, new_jobs)
     
     response = JobsResponse(ok=True, count=len(jobs), jobs=jobs, generated_at=datetime.utcnow())
     

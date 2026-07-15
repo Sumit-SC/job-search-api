@@ -11,6 +11,9 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY app /app/app
 COPY local-ui /app/local-ui
 
+# Setup writable permissions for Hugging Face Spaces non-root user (UID 1000)
+RUN mkdir -p /app/data && chmod -R 777 /app
+
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 ENV ENABLE_HEADLESS=0

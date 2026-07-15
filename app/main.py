@@ -1616,6 +1616,51 @@ async def debug_headless_scrapers() -> dict:
     }
 
 
+@app.get("/debug/telegram")
+async def debug_telegram() -> dict:
+    """Debug route to test Telegram Bot settings and check for errors."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
+    
+    clean_token = token.strip('"').strip("'")
+    clean_chat_id = chat_id.strip('"').strip("'")
+    
+    status = {
+        "configured": {
+            "token_present": bool(token),
+            "chat_id_present": bool(chat_id),
+            "token_length": len(token),
+            "chat_id": chat_id
+        },
+        "cleaned": {
+            "token_length": len(clean_token),
+            "chat_id": clean_chat_id
+        }
+    }
+    
+    if not clean_token or not clean_chat_id:
+        return {"ok": False, "error": "Token or Chat ID missing", "status": status}
+        
+    url = f"https://api.telegram.org/bot{clean_token}/sendMessage"
+    payload = {
+        "chat_id": clean_chat_id,
+        "text": "📢 <b>Debug Test</b>\nConnection from Render is working!",
+        "parse_mode": "HTML"
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(url, json=payload)
+            return {
+                "ok": res.status_code == 200,
+                "status_code": res.status_code,
+                "telegram_response": res.json() if res.status_code == 200 else res.text,
+                "status": status
+            }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "status": status}
+
+
 if __name__ == "__main__":
     import uvicorn
 

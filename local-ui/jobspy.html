@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JobSpy Viewer - Local UI</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -32,16 +34,19 @@
             <div class="card">
                 <h2>Fetch via JobSpy backend</h2>
                 <p class="description">
-                    Scrape 8 job boards via <code>GET /jobspy</code>. Results are cached (server 15 min, browser 5 min). Use “Skip cache” to force a fresh scrape.
+                    Scrape 8 job boards via <code>GET /jobspy</code>. Results are cached (server 15 min, browser 5 min).
+                    Use “Skip cache” to force a fresh scrape.
                 </p>
                 <div class="search-controls">
                     <div class="input-row">
                         <div class="input-group">
                             <label for="jobspy-preset">Boards preset:</label>
                             <select id="jobspy-preset" class="input-select">
-                                <option value="popular" selected>Popular (Indeed, LinkedIn, Google, Glassdoor, ZipRecruiter)</option>
+                                <option value="popular" selected>Popular (Indeed, LinkedIn, Google, Glassdoor,
+                                    ZipRecruiter)</option>
                                 <option value="remote">Remote (same boards, remote-friendly)</option>
-                                <option value="all">All 8 boards (Indeed, LinkedIn, ZipRecruiter, Glassdoor, Google, Bayt, Naukri, BDJobs)</option>
+                                <option value="all">All 8 boards (Indeed, LinkedIn, ZipRecruiter, Glassdoor, Google,
+                                    Bayt, Naukri, BDJobs)</option>
                                 <option value="manual">Manual – select boards below</option>
                             </select>
                         </div>
@@ -51,7 +56,8 @@
                         </div>
                         <div class="input-group">
                             <label for="jobspy-location">Location:</label>
-                            <input type="text" id="jobspy-location" placeholder="e.g., remote, pune, USA" value="remote">
+                            <input type="text" id="jobspy-location" placeholder="e.g., remote, pune, USA"
+                                value="remote">
                         </div>
                         <div class="input-group">
                             <label for="jobspy-days">Days:</label>
@@ -85,7 +91,8 @@
                         <div class="input-group" style="flex: 1;">
                             <label>Select boards (manual mode):</label>
                             <div id="jobspy-manual-boards" class="jobspy-boards-multiselect"></div>
-                            <small class="input-hint">Supported: indeed, linkedin, glassdoor, zip_recruiter, google, bayt, naukri, bdjobs.</small>
+                            <small class="input-hint">Supported: indeed, linkedin, glassdoor, zip_recruiter, google,
+                                bayt, naukri, bdjobs.</small>
                         </div>
                     </div>
                     <p id="jobspy-next-hint" class="jobspy-hint"></p>
@@ -112,20 +119,27 @@
 
         <footer class="page-footer">
             <p class="footer-by">Made with ❤️ & 🧑‍💻 Sumit S C (mitSu)</p>
-            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank" rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy" target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app" target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com" target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a href="https://events.colab.indevs.in" target="_blank" rel="noopener noreferrer">events.colab.indevs.in</a>.</p>
+            <p class="footer-ack">Credits (attribution only): <a href="https://fastapi.tiangolo.com/" target="_blank"
+                    rel="noopener noreferrer">FastAPI</a>, <a href="https://feedparser.readthedocs.io/" target="_blank"
+                    rel="noopener noreferrer">feedparser</a>, <a href="https://github.com/nicolasholland/jobspy"
+                    target="_blank" rel="noopener noreferrer">python-jobspy</a>, <a href="https://rssjobs.app"
+                    target="_blank" rel="noopener noreferrer">rssjobs.app</a>, <a href="https://cursor.com"
+                    target="_blank" rel="noopener noreferrer">Cursor</a>. Analytics: <a
+                    href="https://events.test.indevs.in" target="_blank"
+                    rel="noopener noreferrer">events.colab.indevs.in</a>.</p>
         </footer>
     </div>
 
     <script src="theme.js" defer></script>
     <script src="analytics.js" defer></script>
     <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        if (typeof initAnalyticsTracking === "function") {
-          initAnalyticsTracking({ site: "railway-ui", baseEvent: "jobspy", endpoint: "https://events.colab.indevs.in/api/events" });
-        }
-      });
+        document.addEventListener("DOMContentLoaded", function () {
+            if (typeof initAnalyticsTracking === "function") {
+                initAnalyticsTracking({ site: "railway-ui", baseEvent: "jobspy", endpoint: "https://events.colab.indevs.in/api/events" });
+            }
+        });
     </script>
     <script src="jobspy.js"></script>
 </body>
-</html>
 
+</html>

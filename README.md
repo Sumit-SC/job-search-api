@@ -1,3 +1,14 @@
+---
+title: Tg Jobs Search Alerts
+emoji: 💼
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 4.19.2
+app_file: app.py
+pinned: false
+---
+
 # Job Search API — FastAPI + Playwright
 
 Python job scraper service: **22 RSS/HTTP sources** and **8 optional headless scrapers** (LinkedIn, Indeed, Naukri, Hirist, Foundit, Shine, Monster, Glassdoor). Deploy on **[Koyeb](KOYEB.md)** (Docker, free tier) or **Railway** / any container host. The repo also serves a local UI at `/ui/` (Core API, RSSJobs, JobSpy, Interview Prep, Monitor).

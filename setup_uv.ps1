@@ -21,7 +21,7 @@ if (-not (Has-Command "uv")) {
 
 if (-not (Test-Path ".venv")) {
   Write-Host "Creating .venv with uv..." -ForegroundColor Yellow
-  uv venv
+  uv venv --python 3.11
 }
 
 Write-Host "Installing Python dependencies..." -ForegroundColor Yellow

@@ -905,6 +905,31 @@ async def get_jobs_rss(
     return Response(content=rss_xml, media_type="application/rss+xml")
 
 
+def get_thread_id(location: str, title: str) -> int | None:
+    """Map job location/title keywords to Telegram group topic thread IDs from env."""
+    loc = (location or "").lower()
+    t = (title or "").lower()
+    
+    # Pune
+    if "pune" in loc or "pune" in t:
+        val = os.environ.get("TELEGRAM_THREAD_PUNE", "").strip()
+        return int(val) if val.isdigit() else None
+    # Bangalore
+    if any(k in loc or k in t for k in ["bangalore", "bengaluru", "blr", "bang"]):
+        val = os.environ.get("TELEGRAM_THREAD_BANGALORE", "").strip()
+        return int(val) if val.isdigit() else None
+    # Mumbai
+    if "mumbai" in loc or "mumbai" in t:
+        val = os.environ.get("TELEGRAM_THREAD_MUMBAI", "").strip()
+        return int(val) if val.isdigit() else None
+    # Remote
+    if "remote" in loc or "remote" in t:
+        val = os.environ.get("TELEGRAM_THREAD_REMOTE", "").strip()
+        return int(val) if val.isdigit() else None
+        
+    return None
+
+
 async def notify_telegram(jobs: List[Job]) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
@@ -967,18 +992,134 @@ async def notify_telegram(jobs: List[Job]) -> None:
             text += desc_snippet
             text += f"\n🔗 <a href='{apply_url}'>Apply here</a>"
             
+            thread_id = get_thread_id(j.location or "", j.title or "")
+            
             payload = {
                 "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True
             }
+            if thread_id is not None:
+                payload["message_thread_id"] = thread_id
+                
             try:
                 await client.post(url, json=payload)
                 # Small sleep to avoid Telegram rate limits (max 30/second)
                 await asyncio.sleep(0.5)
             except Exception as e:
                 logging.error(f"Error sending Telegram notification: {e}")
+
+
+async def run_background_refresh() -> None:
+    """Trigger standard background scrape and notification workflow."""
+    existing_jobs = load_jobs()
+    existing_urls = {j.url for j in existing_jobs if j.url}
+    
+    enable_headless = os.getenv("ENABLE_HEADLESS", "0") == "1"
+    jobs = await scrape_all(days=3, query="data analyst", enable_headless=enable_headless, mode="all")
+    save_jobs(jobs)
+    
+    new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
+    if new_jobs:
+        await notify_telegram(new_jobs)
+
+
+@app.post("/tg-webhook")
+async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dict:
+    """Telegram Webhook handler to search jobs and trigger scraper via commands."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        return {"ok": False, "error": "Bot token not configured"}
+        
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": False, "error": "Invalid JSON"}
+        
+    message = update.get("message")
+    if not message:
+        return {"ok": True}
+        
+    chat = message.get("chat", {})
+    chat_id = chat.get("id")
+    thread_id = message.get("message_thread_id")
+    text = (message.get("text") or "").strip()
+    
+    if not chat_id or not text:
+        return {"ok": True}
+        
+    import html
+    
+    async def send_reply(reply_text: str):
+        payload = {
+            "chat_id": chat_id,
+            "text": reply_text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        if thread_id is not None:
+            payload["message_thread_id"] = thread_id
+            
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload)
+
+    if text.startswith("/start") or text.startswith("/help"):
+        help_msg = (
+            "🤖 <b>Job Alert Bot Assistant</b>\n\n"
+            "Here are my commands:\n"
+            "🔍 <code>/search &lt;keyword&gt;</code> - Search matching jobs in database\n"
+            "🔄 <code>/refresh</code> - Trigger background scraping of all boards\n"
+            "ℹ️ <code>/help</code> - Show this help menu"
+        )
+        await send_reply(help_msg)
+        
+    elif text.startswith("/search"):
+        query = text[7:].strip()
+        if not query:
+            await send_reply("❌ Please provide a keyword. Example: <code>/search react</code>")
+            return {"ok": True}
+            
+        await send_reply(f"🔍 Searching database for: <b>{html.escape(query)}</b>...")
+        
+        all_jobs = storage.load_jobs()
+        matched = []
+        for j in all_jobs:
+            title = j.title or ""
+            company = j.company or ""
+            description = j.description or ""
+            q_lower = query.lower()
+            if q_lower in title.lower() or q_lower in company.lower() or q_lower in description.lower():
+                matched.append(j)
+                
+        matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
+        
+        if not matched:
+            await send_reply(f"ℹ️ No matching jobs found for '<b>{html.escape(query)}</b>'.")
+            return {"ok": True}
+            
+        reply_lines = [f"🎯 <b>Found {len(matched)} matches (showing top 5):</b>\n"]
+        for j in matched[:5]:
+            title = html.escape(j.title or "Unknown Role")
+            company = html.escape(j.company or "Unknown Company")
+            location = html.escape(j.location or "Remote/Global")
+            apply_url = j.url or ""
+            
+            line = (
+                f"💼 <b>{title}</b>\n"
+                f"🏢 {company} | 📍 {location}\n"
+                f"🔗 <a href='{apply_url}'>Apply</a>\n"
+            )
+            reply_lines.append(line)
+            
+        await send_reply("\n".join(reply_lines))
+        
+    elif text.startswith("/refresh"):
+        await send_reply("🔄 <b>Scraper Triggered!</b> Running job scrapers in the background. Fresh matches will be posted here soon...")
+        background_tasks.add_task(run_background_refresh)
+        
+    return {"ok": True}
 
 
 @app.post("/refresh", response_model=JobsResponse)

@@ -14,6 +14,112 @@ from .agent import load_profile, filter_jobs, enrich_and_score
 logger = logging.getLogger(__name__)
 
 
+import sqlite3
+from pathlib import Path
+from typing import Tuple
+
+DB_DIR = Path(os.environ.get("JOBS_SCRAPER_DATA_DIR", "data"))
+DB_FILE = DB_DIR / "bot_config.db"
+VALID_TOPICS = {
+    "pune", "bangalore", "mumbai", "hyderabad", "chennai", "delhi_ncr",
+    "india_remote", "apac_remote", "global_remote", "apac_jobs", "visa_sponsored",
+    "data_analytics", "python_developer", "data_scientist", "ml_ai", "data_engineering"
+}
+
+
+def init_bot_db() -> None:
+    """Initialize SQLite database for bot configurations."""
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS topic_threads (
+                topic TEXT PRIMARY KEY,
+                thread_id INTEGER,
+                linked_by TEXT,
+                linked_at TEXT
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Auto-initialize database on module import
+init_bot_db()
+
+
+def get_linked_thread_id(topic: str) -> int | None:
+    """Get the thread ID linked to a topic from SQLite DB."""
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT thread_id FROM topic_threads WHERE topic = ?", (topic.lower().strip(),))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def link_topic_to_thread(topic: str, thread_id: int, user_info: str) -> Tuple[bool, Optional[int]]:
+    """Link a topic to a thread ID. Returns: (success, old_thread_id)."""
+    topic_clean = topic.lower().strip()
+    old_thread = get_linked_thread_id(topic_clean)
+    
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        now_str = datetime.utcnow().isoformat()
+        cursor.execute("""
+            INSERT INTO topic_threads (topic, thread_id, linked_by, linked_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(topic) DO UPDATE SET
+                thread_id=excluded.thread_id,
+                linked_by=excluded.linked_by,
+                linked_at=excluded.linked_at
+        """, (topic_clean, thread_id, user_info, now_str))
+        conn.commit()
+        return True, old_thread
+    finally:
+        conn.close()
+
+
+def unlink_topic(topic: str) -> Optional[int]:
+    """Unlink a topic. Returns the unlinked thread ID if existed."""
+    topic_clean = topic.lower().strip()
+    old_thread = get_linked_thread_id(topic_clean)
+    if old_thread is None:
+        return None
+        
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM topic_threads WHERE topic = ?", (topic_clean,))
+        conn.commit()
+        return old_thread
+    finally:
+        conn.close()
+
+
+def get_all_linked_topics() -> List[dict]:
+    """Get all topic mappings from DB."""
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT topic, thread_id, linked_by, linked_at FROM topic_threads")
+        rows = cursor.fetchall()
+        return [
+            {
+                "topic": r[0],
+                "thread_id": r[1],
+                "linked_by": r[2],
+                "linked_at": r[3]
+            } for r in rows
+        ]
+    finally:
+        conn.close()
+
+
 def clean_description(desc_html: str) -> str:
     """Strip all HTML tags and normalize spaces using BeautifulSoup."""
     if not desc_html:
@@ -90,7 +196,13 @@ def classify_job_topics(job: Job) -> List[str]:
 
 
 def get_topic_thread_id(topic: str) -> int | None:
-    """Resolve thread ID for a specific classified topic from environment variables."""
+    """Resolve thread ID for a specific classified topic (looks up SQLite first, then env)."""
+    # 1. Check SQLite mappings
+    thread_id = get_linked_thread_id(topic)
+    if thread_id is not None:
+        return thread_id
+        
+    # 2. Check environment fallback
     env_name = f"TELEGRAM_THREAD_{topic.upper()}"
     val = os.environ.get(env_name, "").strip()
     return int(val) if val.isdigit() else None
@@ -435,16 +547,109 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         async with httpx.AsyncClient() as client:
             await client.post(url, json=payload)
 
+    user_name = message.get("from", {}).get("first_name", "User")
+    
+    async def send_to_thread(target_thread_id: int, text_content: str):
+        payload = {
+            "chat_id": chat_id,
+            "text": text_content,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+            "message_thread_id": target_thread_id
+        }
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload)
+
     if text.startswith("/start") or text.startswith("/help") or text == "/menu":
         menu_msg = (
             "🤖 <b>Welcome to Job Search Assistant Bot!</b>\n\n"
             "Use the interactive menu below to select jobs by category, or use the text commands:\n\n"
-            "🔍 <code>/fetch &lt;keyword&gt;</code> - Search and page through matching jobs\n"
-            "🔄 <code>/refresh</code> - Trigger background scraping of all boards\n"
-            "ℹ️ <code>/help</code> - Show this menu"
+            "🔍 <code>/fetch &lt;keyword&gt;</code> - Search matching jobs\n"
+            "🔄 <code>/refresh</code> - Trigger background scraping\n"
+            "🔗 <code>/link &lt;topic&gt;</code> - Link this thread to a topic\n"
+            "❌ <code>/unlink &lt;topic&gt;</code> - Unlink a topic\n"
+            "📊 <code>/status</code> - View topic mappings"
         )
         await send_reply(menu_msg, make_main_menu_keyboard())
         
+    elif text.startswith("/link"):
+        topic = text[5:].strip().lower()
+        if not topic:
+            await send_reply("⚠️ Usage: <code>/link &lt;topic&gt;</code>\nExample: <code>/link python_developer</code>")
+            return {"ok": True}
+            
+        if topic not in VALID_TOPICS:
+            valid_list = ", ".join(sorted(list(VALID_TOPICS)))
+            await send_reply(f"❌ Invalid topic. Valid topics are:\n<code>{valid_list}</code>")
+            return {"ok": True}
+            
+        if thread_id is None:
+            await send_reply("⚠️ Please run this command inside a specific topic thread to link it.")
+            return {"ok": True}
+            
+        old_thread = get_linked_thread_id(topic)
+        if old_thread == thread_id:
+            await send_reply(f"✅ Topic <code>{topic}</code> is already linked to this thread.")
+        elif old_thread is not None:
+            await send_reply(
+                f"⚠️ Topic <b>{topic}</b> is already linked to another thread ID (<code>{old_thread}</code>).\n\n"
+                f"To unlink it from the old thread and link it here, type:\n"
+                f"<code>/unlink_and_link {topic}</code>"
+            )
+        else:
+            link_topic_to_thread(topic, thread_id, user_name)
+            await send_reply(f"✅ Linked topic <code>{topic}</code> to this thread!")
+
+    elif text.startswith("/unlink_and_link"):
+        topic = text[16:].strip().lower()
+        if not topic or topic not in VALID_TOPICS or thread_id is None:
+            await send_reply("⚠️ Invalid request. Usage: <code>/unlink_and_link &lt;topic&gt;</code> inside a topic thread.")
+            return {"ok": True}
+            
+        old_thread = unlink_topic(topic)
+        link_topic_to_thread(topic, thread_id, user_name)
+        
+        chat_stripped = str(chat_id).replace("-100", "")
+        new_thread_link = f"https://t.me/c/{chat_stripped}/{thread_id}"
+        
+        if old_thread is not None:
+            await send_to_thread(
+                old_thread,
+                f"📢 Topic <b>{topic}</b> has been unlinked from this thread and linked to the <a href='{new_thread_link}'>new thread</a> by {user_name}!"
+            )
+            
+        await send_reply(f"✅ Re-linked topic <b>{topic}</b> to this thread! (Unlinked from old thread <code>{old_thread}</code>).")
+
+    elif text.startswith("/unlink"):
+        topic = text[7:].strip().lower()
+        if not topic:
+            await send_reply("⚠️ Usage: <code>/unlink &lt;topic&gt;</code>")
+            return {"ok": True}
+            
+        old_thread = unlink_topic(topic)
+        if old_thread is not None:
+            await send_reply(f"✅ Unlinked topic <code>{topic}</code> from thread <code>{old_thread}</code>.")
+        else:
+            await send_reply(f"ℹ️ Topic <code>{topic}</code> was not linked.")
+
+    elif text.startswith("/status") or text.startswith("/topics"):
+        mappings = get_all_linked_topics()
+        if not mappings:
+            await send_reply("📊 <b>No topics are currently linked to any threads.</b>\nUse <code>/link &lt;topic&gt;</code> inside a thread to map it.")
+            return {"ok": True}
+            
+        chat_stripped = str(chat_id).replace("-100", "")
+        lines = ["📊 <b>Current Topic Mappings:</b>\n"]
+        for m in mappings:
+            t = m["topic"]
+            tid = m["thread_id"]
+            user = m["linked_by"]
+            thread_link = f"https://t.me/c/{chat_stripped}/{tid}"
+            lines.append(f"• <b>{t}</b>: <a href='{thread_link}'>Thread {tid}</a> (linked by {user})")
+            
+        await send_reply("\n".join(lines))
+
     elif text.startswith("/fetch") or text.startswith("/search"):
         cmd_len = 7 if text.startswith("/search") else 6
         query = text[cmd_len:].strip()

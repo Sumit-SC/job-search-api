@@ -347,8 +347,8 @@ def format_jobs_page(jobs: List[Job], query: str, page: int, per_page: int = 5, 
 
 
 async def notify_telegram(jobs: List[Job]) -> None:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
+    chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip().strip('"').strip("'")
     if not token or not chat_id:
         return
         
@@ -458,7 +458,7 @@ async def run_background_refresh() -> None:
 
 async def handle_tg_webhook(update: dict, background_tasks) -> dict:
     """Process bot commands and callback query interactions."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
     if not token:
         return {"ok": False, "error": "Bot token not configured"}
         
@@ -626,14 +626,18 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         await send_reply(menu_msg, make_main_menu_keyboard())
         
     elif text.startswith("/link"):
-        topic = text[5:].strip().lower()
-        if not topic:
+        cmd_parts = text.split(maxsplit=1)
+        param = cmd_parts[1].strip().lower() if len(cmd_parts) > 1 else ""
+        
+        if not param:
             if thread_id is None:
                 await send_reply("⚠️ Please run this command inside a specific topic thread to link it.")
                 return {"ok": True}
             menu_msg = "🔗 <b>Select a topic to link to this thread:</b>"
             await send_reply(menu_msg, make_link_menu_keyboard(thread_id))
             return {"ok": True}
+            
+        topic = param
             
         if topic not in VALID_TOPICS:
             valid_list = ", ".join(sorted(list(VALID_TOPICS)))
@@ -687,7 +691,8 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         await send_reply(f"✅ Re-linked topic <b>{topic_friendly}</b> to this thread! (Unlinked from old thread <code>{old_thread}</code>).")
 
     elif text.startswith("/unlink"):
-        topic = text[7:].strip().lower()
+        cmd_parts = text.split(maxsplit=1)
+        topic = cmd_parts[1].strip().lower() if len(cmd_parts) > 1 else ""
         if not topic:
             await send_reply("⚠️ Usage: <code>/unlink &lt;topic&gt;</code>")
             return {"ok": True}
@@ -718,8 +723,8 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         await send_reply("\n".join(lines))
 
     elif text.startswith("/fetch") or text.startswith("/search"):
-        cmd_len = 7 if text.startswith("/search") else 6
-        query = text[cmd_len:].strip()
+        cmd_parts = text.split(maxsplit=1)
+        query = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
         if not query:
             menu_msg = (
                 "🤖 <b>Job Search Menu</b>\n\n"

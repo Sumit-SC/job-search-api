@@ -2798,6 +2798,60 @@ async def scrape_remoteindian(days: int = 7, query: str | None = None) -> List[J
     return jobs
 
 
+async def scrape_custom_rss(days: int = 3, query: str | None = None) -> List[Job]:
+    """Scrape custom RSS feeds configured in the environment (e.g. rssjobs.app feeds)."""
+    feed_urls_str = os.environ.get("CUSTOM_RSS_FEEDS", "").strip()
+    if not feed_urls_str:
+        return []
+        
+    urls = [u.strip() for u in feed_urls_str.split(",") if u.strip()]
+    out: List[Job] = []
+    
+    async with _make_client() as client:
+        for url in urls:
+            try:
+                xml = await fetch_text(client, url)
+                if not xml:
+                    continue
+                feed = feedparser.parse(xml)
+                for entry in feed.entries:
+                    title = getattr(entry, "title", "") or ""
+                    link = getattr(entry, "link", "") or ""
+                    summary = getattr(entry, "summary", "") or ""
+                    published = getattr(entry, "published", "") or ""
+                    
+                    company = "Unknown"
+                    if " at " in title:
+                        parts = title.split(" at ")
+                        company = parts[-1].strip()
+                        title = " at ".join(parts[:-1]).strip()
+                    
+                    dt = _parse_date(published)
+                    if not _within_days(dt, days):
+                        continue
+                        
+                    if not _matches_query(title, summary, query):
+                        continue
+                        
+                    if not link:
+                        continue
+                        
+                    out.append(Job(
+                        id=f"custom_rss_{hash(link)}",
+                        title=title,
+                        company=company,
+                        location="Remote",
+                        url=link,
+                        description=summary[:2000],
+                        source="custom_rss",
+                        date=dt
+                    ))
+            except Exception as e:
+                logger.error(f"Error parsing custom RSS feed {url}: {e}")
+    logger.info(f"Scraped {len(out)} jobs from custom RSS feeds")
+    return out
+
+
 SCRAPER_REGISTRY = {
     "greenhouse": scrape_greenhouse,
     "lever": scrape_lever,
@@ -2819,6 +2873,7 @@ SCRAPER_REGISTRY = {
     "jobicy": scrape_jobicy_api,
     "workingnomads": scrape_workingnomads,
     "justremote": scrape_justremote,
+    "custom_rss": scrape_custom_rss,
     # Removed (dead): wellfound (403), indeed_rss (404), stackoverflow (403),
     #                  dailyremote (404), remoteindian (404)
 }

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from .models import Job
-from .storage import load_jobs, save_jobs, DB_FILE
+from .storage import load_jobs, save_jobs, DB_FILE, save_user_profile, get_user_profile
 from .scraper import scrape_all
 from .agent import load_profile, filter_jobs, enrich_and_score
 
@@ -297,6 +297,94 @@ def filter_jobs_by_key(jobs: List[Job], key: str) -> List[Job]:
     return out
 
 
+def make_profile_keyboard() -> dict:
+    """Generate inline buttons for editing user profile settings."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "⏳ Edit YoE", "callback_data": "prof:edit_yoe"},
+                {"text": "🛠️ Edit Skills", "callback_data": "prof:edit_skills"}
+            ],
+            [
+                {"text": "📍 Edit Locations", "callback_data": "prof:edit_locs"},
+                {"text": "📱 Main Menu", "callback_data": "menu"}
+            ]
+        ]
+    }
+
+
+def make_yoe_keyboard() -> dict:
+    """Generate inline buttons for selecting YoE (0 to 10)."""
+    buttons = []
+    row = []
+    for y in range(11):
+        row.append({"text": str(y), "callback_data": f"prof_set_yoe:{y}"})
+        if len(row) == 4:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([{"text": "🔙 Back", "callback_data": "prof:view"}])
+    return {"inline_keyboard": buttons}
+
+
+def calculate_user_match_score(job: Job, profile: dict) -> Tuple[float, List[str]]:
+    """Calculate a personalized match score (0-100%) and matching reasons list."""
+    import re
+    score = 40.0 # Base score
+    reasons = []
+    
+    title = (job.title or "").lower()
+    desc = (job.description or "").lower()
+    loc = (job.location or "").lower()
+    
+    # 1. Experience Check
+    user_yoe = profile.get("yoe")
+    if user_yoe is not None:
+        job_max_yoe = extract_max_yoe(title) or extract_max_yoe(desc)
+        if job_max_yoe is not None:
+            if user_yoe >= job_max_yoe:
+                score += 30.0
+                reasons.append("⏳ Matches experience requirements")
+            elif user_yoe < job_max_yoe - 2:
+                score -= 30.0
+                reasons.append("⚠️ Requires higher experience")
+            else:
+                score += 10.0
+                reasons.append("⏳ Slighly higher experience requirements")
+        else:
+            score += 20.0
+            reasons.append("⏳ Experience range likely fits")
+
+    # 2. Location Check
+    pref_locs_str = profile.get("locations")
+    if pref_locs_str:
+        pref_locs = [x.strip().lower() for x in pref_locs_str.split(",") if x.strip()]
+        matched_locs = []
+        for l in pref_locs:
+            if l in loc or l in title:
+                matched_locs.append(l)
+        if matched_locs:
+            score += 20.0
+            reasons.append(f"📍 Location match ({', '.join(matched_locs)})")
+            
+    # 3. Skills Check
+    pref_skills_str = profile.get("skills")
+    if pref_skills_str:
+        pref_skills = [x.strip().lower() for x in pref_skills_str.split(",") if x.strip()]
+        matched_skills = []
+        for s in pref_skills:
+            if re.search(r"\b" + re.escape(s) + r"\b", title) or re.search(r"\b" + re.escape(s) + r"\b", desc):
+                matched_skills.append(s)
+        if matched_skills:
+            skill_bonus = min(30.0, len(matched_skills) * 10.0)
+            score += skill_bonus
+            reasons.append(f"🛠️ Matches skills ({', '.join(matched_skills)})")
+            
+    final_score = max(0.0, min(100.0, score))
+    return final_score, reasons
+
+
 def make_link_menu_keyboard(thread_id: int) -> dict:
     """Generate inline buttons for all valid topics to map to the current thread."""
     buttons = []
@@ -408,9 +496,19 @@ def format_jobs_page(jobs: List[Job], query: str, page: int, per_page: int = 5, 
             ago = format_posted_ago(j.date)
             apply_url = j.url or ""
             
+            score_line = ""
+            reasons_line = ""
+            user_score = getattr(j, "user_match_score", None) or getattr(j, "match_score", None)
+            if user_score is not None:
+                score_line = f" | 🎯 Match: {int(user_score)}%"
+                reasons = getattr(j, "user_match_reasons", [])
+                if reasons:
+                    reasons_line = f"   💡 {', '.join(reasons[:2])}\n"
+            
             line = (
                 f"{idx}. 💼 <b>{title}</b>\n"
-                f"   🏢 {company} | 📍 {location}\n"
+                f"   🏢 {company} | 📍 {location}{score_line}\n"
+                f"{reasons_line}"
                 f"   ⏳ {ago} | 🔗 <a href='{apply_url}'>Apply</a>\n\n"
             )
             lines.append(line)
@@ -644,6 +742,56 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         elif data == "cancel_link":
             await edit_reply("❌ Topic linking cancelled.")
                 
+        elif data == "prof:view":
+            user_id = callback_query.get("from", {}).get("id")
+            first_name = callback_query.get("from", {}).get("first_name", "User")
+            prof = get_user_profile(user_id)
+            if not prof:
+                save_user_profile(user_id, first_name, None, None, None)
+                prof = {"yoe": None, "skills": None, "locations": None}
+            
+            yoe_val = f"{prof['yoe']} YoE" if prof['yoe'] is not None else "Not set"
+            skills_val = prof['skills'] if prof['skills'] else "Not set"
+            locs_val = prof['locations'] if prof['locations'] else "Not set"
+            
+            msg = (
+                f"👤 <b>Your Job Seeker Profile:</b>\n\n"
+                f"⏳ <b>Experience:</b> {yoe_val}\n"
+                f"🛠️ <b>Skills:</b> <code>{skills_val}</code>\n"
+                f"📍 <b>Locations:</b> <code>{locs_val}</code>\n\n"
+                f"Use the buttons below to customize your preferences."
+            )
+            await edit_reply(msg, make_profile_keyboard())
+            
+        elif data == "prof:edit_yoe":
+            await edit_reply("⏳ <b>Select your years of experience (YoE):</b>", make_yoe_keyboard())
+            
+        elif data.startswith("prof_set_yoe:"):
+            yoe = int(data.split(":")[1])
+            user_id = callback_query.get("from", {}).get("id")
+            first_name = callback_query.get("from", {}).get("first_name", "User")
+            prof = get_user_profile(user_id) or {"skills": None, "locations": None}
+            save_user_profile(user_id, first_name, yoe, prof.get("skills"), prof.get("locations"))
+            await edit_reply(f"✅ Years of experience updated to <b>{yoe} YoE</b>!", make_yoe_keyboard())
+            
+        elif data == "prof:edit_skills":
+            await edit_reply(
+                "🛠️ <b>Update Skills:</b>\n\n"
+                "Type the <code>/skills</code> command followed by a comma-separated list of your technical skills:\n\n"
+                "Example:\n"
+                "<code>/skills python, sql, machine learning</code>",
+                make_profile_keyboard()
+            )
+            
+        elif data == "prof:edit_locs":
+            await edit_reply(
+                "📍 <b>Update Locations:</b>\n\n"
+                "Type the <code>/locations</code> command followed by a comma-separated list of preferred locations/cities:\n\n"
+                "Example:\n"
+                "<code>/locations pune, bangalore, remote</code>",
+                make_profile_keyboard()
+            )
+            
         return {"ok": True}
 
     message = update.get("message")
@@ -687,6 +835,53 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         async with httpx.AsyncClient() as client:
             await client.post(url, json=payload)
+
+    user_id = message.get("from", {}).get("id")
+    first_name = message.get("from", {}).get("first_name", "User")
+
+    if text.startswith("/profile"):
+        prof = get_user_profile(user_id)
+        if not prof:
+            save_user_profile(user_id, first_name, None, None, None)
+            prof = {"yoe": None, "skills": None, "locations": None}
+            
+        yoe_val = f"{prof['yoe']} YoE" if prof['yoe'] is not None else "Not set"
+        skills_val = prof['skills'] if prof['skills'] else "Not set"
+        locs_val = prof['locations'] if prof['locations'] else "Not set"
+        
+        msg = (
+            f"👤 <b>Your Job Seeker Profile:</b>\n\n"
+            f"⏳ <b>Experience:</b> {yoe_val}\n"
+            f"🛠️ <b>Skills:</b> <code>{skills_val}</code>\n"
+            f"📍 <b>Locations:</b> <code>{locs_val}</code>\n\n"
+            f"Use the buttons below to customize your preferences."
+        )
+        await send_reply(msg, make_profile_keyboard())
+        return {"ok": True}
+
+    elif text.startswith("/skills"):
+        cmd_parts = text.split(maxsplit=1)
+        skills = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+        if not skills:
+            await send_reply("⚠️ Usage: <code>/skills python, sql, machine learning</code>")
+            return {"ok": True}
+            
+        prof = get_user_profile(user_id) or {"yoe": None, "locations": None}
+        save_user_profile(user_id, first_name, prof.get("yoe"), skills, prof.get("locations"))
+        await send_reply(f"✅ Skills updated to: <code>{skills}</code>")
+        return {"ok": True}
+
+    elif text.startswith("/locations"):
+        cmd_parts = text.split(maxsplit=1)
+        locs = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+        if not locs:
+            await send_reply("⚠️ Usage: <code>/locations pune, bangalore, remote</code>")
+            return {"ok": True}
+            
+        prof = get_user_profile(user_id) or {"yoe": None, "skills": None}
+        save_user_profile(user_id, first_name, prof.get("yoe"), prof.get("skills"), locs)
+        await send_reply(f"✅ Preferred locations updated to: <code>{locs}</code>")
+        return {"ok": True}
 
     if text.startswith("/start") or text.startswith("/help") or text == "/menu":
         menu_msg = (
@@ -820,7 +1015,19 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             if q_lower in title.lower() or q_lower in company.lower() or q_lower in description.lower():
                 matched.append(j)
                 
-        matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
+        profile = get_user_profile(user_id)
+        if profile:
+            scored_matched = []
+            for j in matched:
+                score, reasons = calculate_user_match_score(j, profile)
+                setattr(j, "user_match_score", score)
+                setattr(j, "user_match_reasons", reasons)
+                scored_matched.append(j)
+            scored_matched.sort(key=lambda x: (getattr(x, "user_match_score", 0.0), getattr(x, "date", datetime.utcnow()) or datetime.utcnow()), reverse=True)
+            matched = scored_matched
+        else:
+            matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
+            
         total_pages = (len(matched) + 4) // 5 if matched else 1
         text_resp = format_jobs_page(matched, query, 0, per_page=5, title_prefix="Search Results")
         keyboard = make_pagination_keyboard(query, 0, total_pages, is_filter=False)

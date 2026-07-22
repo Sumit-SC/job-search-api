@@ -18,27 +18,31 @@ import sqlite3
 from typing import Tuple
 
 VALID_TOPICS = {
-    "pune", "bangalore", "mumbai", "hyderabad", "chennai", "delhi_ncr",
-    "india_remote", "apac_remote", "global_remote", "apac_jobs", "visa_sponsored",
-    "data_analytics", "python_developer", "data_scientist", "ml_ai", "data_engineering"
+    "pune", "bangalore", "mumbai", "hyderabad", "chennai", "delhi_ncr", "india",
+    "india_remote", "apac_remote", "global_remote", "worldwide_remote", "apac_jobs", "eu_jobs", "arab_jobs",
+    "visa_sponsored", "data_analytics", "python_developer", "data_scientist", "ml_ai", "data_engineering"
 }
 
 TOPIC_FRIENDLY_NAMES = {
     "pune": "🏢 Pune Jobs",
     "bangalore": "🏢 Bangalore Jobs",
-    "mumbai": "🏢 Mumbai Jobs",
+    "mumbai": "🏢 Mumbai/Thane Jobs",
     "hyderabad": "🏢 Hyderabad Jobs",
     "chennai": "🏢 Chennai Jobs",
     "delhi_ncr": "🏢 Delhi-NCR Jobs",
+    "india": "🇮🇳 India (Onsite/Hybrid)",
     "india_remote": "🇮🇳 India Remote",
     "apac_remote": "🌏 APAC Remote",
     "global_remote": "🌍 Global Remote",
-    "apac_jobs": "🌏 APAC Jobs",
+    "worldwide_remote": "🗺️ Worldwide Remote",
+    "apac_jobs": "🌏 APAC (Onsite/Hybrid)",
+    "eu_jobs": "🇪🇺 EU Jobs",
+    "arab_jobs": "🇦🇪 Arab/Middle East",
     "visa_sponsored": "🛂 Visa Sponsored",
     "data_analytics": "📊 Data Analytics",
     "python_developer": "🐍 Python Developer",
-    "data_scientist": "🧪 Data Scientist (Jr)",
-    "ml_ai": "🤖 ML / AI (Jr)",
+    "data_scientist": "🧪 Data Scientist (Jr/Mid)",
+    "ml_ai": "🤖 ML / AI (Jr/Mid)",
     "data_engineering": "💾 Data Engineering"
 }
 
@@ -115,12 +119,15 @@ def get_all_linked_topics() -> List[dict]:
 
 
 def clean_description(desc_html: str) -> str:
-    """Strip all HTML tags and normalize spaces using BeautifulSoup."""
+    """Strip all HTML tags and normalize spaces using BeautifulSoup after unescaping."""
     if not desc_html:
         return ""
     try:
+        import html
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(desc_html, "html.parser")
+        # Unescape first to convert escaped HTML like &lt;p&gt; to standard tags
+        unescaped = html.unescape(desc_html)
+        soup = BeautifulSoup(unescaped, "html.parser")
         text = soup.get_text(separator=" ")
         return " ".join(text.split())
     except Exception:
@@ -129,62 +136,127 @@ def clean_description(desc_html: str) -> str:
         return " ".join(clean.split())
 
 
+def extract_max_yoe(desc: str) -> int | None:
+    """Extract the maximum required YoE from the description text using regex."""
+    import re
+    if not desc:
+        return None
+    patterns = [
+        r"(\d+)\s*(?:-|to)\s*(\d+)\s*(?:years|yoe|year)",
+        r"(\d+)\+?\s*(?:years|yoe|year)\s*of\s*experience",
+        r"(?:requried|require|minimum|least|at\s+least)\s*(\d+)\s*(?:years|yoe|year)"
+    ]
+    for p in patterns:
+        matches = re.findall(p, desc.lower())
+        if matches:
+            for m in matches:
+                if isinstance(m, tuple):
+                    vals = [int(v) for v in m if v.isdigit()]
+                    if vals:
+                        return max(vals)
+                elif str(m).isdigit():
+                    return int(m)
+    return None
+
+
 def classify_job_topics(job: Job) -> List[str]:
     """Classify a job into highly targeted geographical and role-based topics."""
+    import re
     topics = []
     title = (job.title or "").lower()
     desc = (job.description or "").lower()
     loc = (job.location or "").lower()
     
-    # Geographies
+    # 1. Geographies
+    # Pune
     if "pune" in loc or "pune" in title:
         topics.append("pune")
+    # Bangalore
     if any(x in loc or x in title for x in ["bangalore", "bengaluru", "blr", "bang"]):
         topics.append("bangalore")
-    if "mumbai" in loc or "mumbai" in title:
+    # Mumbai (includes Navi Mumbai and Thane)
+    if any(x in loc or x in title for x in ["mumbai", "navi mumbai", "thane"]):
         topics.append("mumbai")
+    # Hyderabad
     if "hyderabad" in loc or "hyderabad" in title:
         topics.append("hyderabad")
+    # Chennai
     if "chennai" in loc or "chennai" in title:
         topics.append("chennai")
+    # Delhi NCR / Noida / Gurgaon
     if any(x in loc or x in title for x in ["delhi", "ncr", "noida", "gurgaon", "gurugram"]):
         topics.append("delhi_ncr")
+
+    # Generic India (onsite/hybrid or remote)
+    is_in_india = (
+        re.search(r"\b(india|in)\b", loc) is not None or 
+        re.search(r"\b(india|in)\b", title) is not None or
+        any(x in loc or x in title for x in ["pune", "bangalore", "bengaluru", "mumbai", "navi mumbai", "thane", "hyderabad", "chennai", "delhi", "noida", "gurgaon", "gurugram", "ncr"])
+    )
+    if is_in_india:
+        topics.append("india")
         
     is_remote = "remote" in loc or "remote" in title
     if is_remote:
-        if "india" in loc or "india" in title or "in" in loc:
+        # India Remote
+        if is_in_india:
             topics.append("india_remote")
-        elif any(x in loc or x in title for x in ["apac", "asia", "singapore", "sg", "philippines", "ph", "malaysia", "vietnam"]):
+        # APAC Remote
+        elif any(x in loc or x in title for x in ["apac", "asia", "singapore", "sg", "philippines", "ph", "malaysia", "vietnam", "thailand", "indonesia"]):
             topics.append("apac_remote")
-        else:
-            if not any(x in loc for x in ["germany", "de", "us", "uk", "canada", "ca", "europe", "eu"]):
-                topics.append("global_remote")
+        # EU Remote
+        elif any(x in loc or x in title for x in ["germany", "de", "france", "fr", "netherlands", "nl", "spain", "es", "italy", "it", "poland", "pl", "sweden", "se", "belgium", "be", "austria", "at", "europe", "eu"]):
+            topics.append("eu_jobs")
+        # Arab/ME Remote
+        elif any(x in loc or x in title for x in ["dubai", "uae", "saudi", "ksa", "qatar", "bahrain", "kuwait", "oman", "middle east"]):
+            topics.append("arab_jobs")
+            
+        # Worldwide Remote
+        if any(x in loc or x in title for x in ["worldwide", "global", "anywhere", "open to all"]):
+            topics.append("worldwide_remote")
+        # Fallback Global Remote (excluding EU/US restricted)
+        elif not any(x in loc for x in ["germany", "de", "us", "uk", "canada", "ca", "europe", "eu"]):
+            topics.append("global_remote")
     else:
+        # Onsite APAC
         if any(x in loc for x in ["singapore", "malaysia", "philippines", "vietnam", "thailand", "indonesia"]):
             topics.append("apac_jobs")
+        # Onsite EU
+        if any(x in loc for x in ["germany", "france", "netherlands", "spain", "italy", "poland", "sweden", "belgium", "austria"]):
+            topics.append("eu_jobs")
+        # Onsite Arab/ME
+        if any(x in loc for x in ["dubai", "uae", "saudi", "ksa", "qatar", "bahrain", "kuwait", "oman"]):
+            topics.append("arab_jobs")
             
     if "visa" in desc or "sponsorship" in desc or getattr(job, "visa_sponsorship", False):
         if not any(x in desc for x in ["no visa", "cannot sponsor", "do not sponsor"]):
             topics.append("visa_sponsored")
 
-    # Roles
-    analytics_keywords = ["analytics", "analyst", "bi dev", "bi developer", "power bi", "tableau", "business intelligence"]
-    if any(x in title for x in analytics_keywords):
-        topics.append("data_analytics")
-        
-    if "python" in title and "developer" in title or "python engineer" in title:
-        topics.append("python_developer")
-        
-    if "data scientist" in title or "data science" in title:
-        if any(x in title or x in desc for x in ["junior", "intern", "associate", "entry level", "grad"]):
+    # 2. Roles (filtered by max 5 YoE Ceiling for technical roles)
+    max_yoe = extract_max_yoe(desc) or extract_max_yoe(title)
+    
+    # Check if this job requires senior YoE (> 5 YoE)
+    is_junior_mid = True
+    if max_yoe is not None and max_yoe > 5:
+        is_junior_mid = False
+
+    # Apply role tagging if it matches keywords and doesn't exceed 5 YoE
+    if is_junior_mid:
+        analytics_keywords = ["analytics", "analyst", "bi dev", "bi developer", "power bi", "tableau", "business intelligence"]
+        if any(x in title for x in analytics_keywords):
+            topics.append("data_analytics")
+            
+        if "python" in title and "developer" in title or "python engineer" in title:
+            topics.append("python_developer")
+            
+        if "data scientist" in title or "data science" in title:
             topics.append("data_scientist")
-            
-    if any(x in title for x in ["machine learning", "ml ", "ml engineer", "artificial intelligence", "ai engineer", "deep learning"]):
-        if any(x in title or x in desc for x in ["junior", "intern", "associate", "entry level", "grad"]):
+                
+        if any(x in title for x in ["machine learning", "ml ", "ml engineer", "artificial intelligence", "ai engineer", "deep learning"]):
             topics.append("ml_ai")
-            
-    if "data engineer" in title or "data engineering" in title or "pipeline engineer" in title:
-        topics.append("data_engineering")
+                
+        if "data engineer" in title or "data engineering" in title or "pipeline engineer" in title:
+            topics.append("data_engineering")
         
     return topics
 
@@ -387,11 +459,14 @@ async def notify_telegram(jobs: List[Job]) -> None:
                 else:
                     desc_snippet = f"\n📝 <b>Description:</b> {html.escape(raw_desc)}\n"
                     
+            posted_time = format_posted_ago(j.date)
+            
             text = (
                 f"📢 <b>New Job Alert</b>\n\n"
                 f"💼 <b>Role:</b> {title}\n"
                 f"🏢 <b>Company:</b> {company}\n"
                 f"📍 <b>Location:</b> {location}\n"
+                f"📅 <b>Posted:</b> {posted_time}\n"
             )
             if getattr(j, "match_score", None) is not None:
                 text += f"🎯 <b>Match Score:</b> {j.match_score}%\n"

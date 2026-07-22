@@ -1661,6 +1661,36 @@ async def debug_telegram() -> dict:
         return {"ok": False, "error": str(e), "status": status}
 
 
+@app.get("/setup-webhook")
+async def setup_webhook(request: Request) -> dict:
+    """Automatically configure the Telegram webhook for this Render instance."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    clean_token = token.strip('"').strip("'")
+    if not clean_token:
+        return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not configured"}
+        
+    host = request.headers.get("host", "")
+    if not host:
+        return {"ok": False, "error": "Could not determine host header"}
+        
+    proto = "https" if "render.com" in host or "localhost" not in host else "http"
+    webhook_url = f"{proto}://{host}/tg-webhook"
+    
+    tg_url = f"https://api.telegram.org/bot{clean_token}/setWebhook?url={webhook_url}"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(tg_url)
+            return {
+                "ok": res.status_code == 200,
+                "status_code": res.status_code,
+                "webhook_url": webhook_url,
+                "telegram_response": res.json()
+            }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
 

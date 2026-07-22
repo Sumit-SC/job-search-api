@@ -53,6 +53,17 @@ def init_db() -> None:
             )
         """)
         
+        # 3. User Profiles table for personalized ranking
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                user_id INTEGER PRIMARY KEY,
+                first_name TEXT,
+                yoe INTEGER,
+                skills TEXT, -- Comma-separated skills
+                locations TEXT -- Comma-separated locations
+            )
+        """)
+        
         # Indexes for fast search
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_date ON jobs(date)")
@@ -180,5 +191,44 @@ def load_saved_at() -> str | None:
         cursor.execute("SELECT MAX(scraped_at) FROM jobs")
         row = cursor.fetchone()
         return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def save_user_profile(user_id: int, first_name: str, yoe: int | None, skills: str | None, locations: str | None) -> None:
+    """Save or update user search preferences profile in SQLite."""
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        conn.execute("""
+            INSERT INTO user_profiles (user_id, first_name, yoe, skills, locations)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                first_name=excluded.first_name,
+                yoe=excluded.yoe,
+                skills=excluded.skills,
+                locations=excluded.locations
+        """, (user_id, first_name, yoe, skills, locations))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user_profile(user_id: int) -> dict | None:
+    """Retrieve user search preferences from SQLite."""
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row:
+            return {
+                "user_id": row["user_id"],
+                "first_name": row["first_name"],
+                "yoe": row["yoe"],
+                "skills": row["skills"],
+                "locations": row["locations"]
+            }
+        return None
     finally:
         conn.close()

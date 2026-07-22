@@ -140,6 +140,8 @@ async def schedule_scraping_loop() -> None:
 @app.on_event("startup")
 async def startup_event() -> None:
     asyncio.create_task(schedule_scraping_loop())
+    from .bot import keep_awake_loop
+    asyncio.create_task(keep_awake_loop())
 
 
 @app.get("/websearch", response_model=WebSearchResponse)

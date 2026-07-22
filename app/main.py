@@ -102,6 +102,45 @@ app.add_middleware(
 )
 
 
+async def schedule_scraping_loop() -> None:
+    """Infinite loop to periodically scrape and notify new jobs."""
+    try:
+        val = os.environ.get("SCRAPE_INTERVAL_HOURS", "2.0").strip()
+        interval_hours = float(val) if val else 2.0
+    except Exception:
+        interval_hours = 2.0
+        
+    logging.info(f"Starting background scraping loop. Interval: {interval_hours} hours.")
+    
+    # 2-minute delay on startup to allow container boot to stabilize
+    await asyncio.sleep(120)
+    
+    while True:
+        try:
+            logging.info("Triggering scheduled background scrape...")
+            existing_jobs = load_jobs()
+            existing_urls = {j.url for j in existing_jobs if j.url}
+            
+            enable_headless = os.getenv("ENABLE_HEADLESS", "0") == "1"
+            jobs = await scrape_all(days=3, query="data analyst", enable_headless=enable_headless, mode="all")
+            save_jobs(jobs)
+            
+            new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
+            if new_jobs:
+                await notify_telegram(new_jobs)
+                
+            logging.info("Scheduled background scrape completed successfully.")
+        except Exception as e:
+            logging.error(f"Error in scheduled background scrape: {e}")
+            
+        await asyncio.sleep(interval_hours * 3600)
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    asyncio.create_task(schedule_scraping_loop())
+
+
 @app.get("/websearch", response_model=WebSearchResponse)
 async def websearch(
     q: Optional[str] = Query(None, description="Search query, e.g. data analyst remote"),
@@ -930,6 +969,138 @@ def get_thread_id(location: str, title: str) -> int | None:
     return None
 
 
+def clean_description(desc_html: str) -> str:
+    """Strip all HTML tags and normalize spaces using BeautifulSoup."""
+    if not desc_html:
+        return ""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(desc_html, "html.parser")
+        text = soup.get_text(separator=" ")
+        return " ".join(text.split())
+    except Exception:
+        # Fallback to simple replace if bs4 fails
+        import re
+        clean = re.sub(r'<[^>]+>', '', desc_html)
+        return " ".join(clean.split())
+
+
+def filter_jobs_by_key(jobs: List[Job], key: str) -> List[Job]:
+    """Filter jobs by pre-defined location categories."""
+    out = []
+    k = key.lower()
+    for j in jobs:
+        loc = (j.location or "").lower()
+        title = (j.title or "").lower()
+        
+        if k == "pune" and ("pune" in loc or "pune" in title):
+            out.append(j)
+        elif k == "bangalore" and any(x in loc or x in title for x in ["bangalore", "bengaluru", "blr", "bang"]):
+            out.append(j)
+        elif k == "mumbai" and ("mumbai" in loc or "mumbai" in title):
+            out.append(j)
+        elif k == "india_remote" and ("remote" in loc or "remote" in title) and ("india" in loc or "india" in title or "in" in loc):
+            out.append(j)
+        elif k == "global_remote" and ("remote" in loc or "remote" in title) and not any(x in loc for x in ["germany", "de", "us", "uk", "canada", "ca", "europe", "eu"]):
+            out.append(j)
+        elif k == "all":
+            out.append(j)
+    return out
+
+
+def make_main_menu_keyboard() -> dict:
+    """Generate main interactive inline keyboard options."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🇮🇳 India Remote", "callback_data": "f:india_remote:0"},
+                {"text": "🌍 Global Remote", "callback_data": "f:global_remote:0"}
+            ],
+            [
+                {"text": "🏢 Pune Jobs", "callback_data": "f:pune:0"},
+                {"text": "🏢 Bangalore Jobs", "callback_data": "f:bangalore:0"}
+            ],
+            [
+                {"text": "🏢 Mumbai Jobs", "callback_data": "f:mumbai:0"},
+                {"text": "🔄 Refresh Scrapers", "callback_data": "trigger_refresh"}
+            ]
+        ]
+    }
+
+
+def make_pagination_keyboard(query: str, page: int, total_pages: int, is_filter: bool = False) -> dict:
+    """Generate Prev/Next/Menu inline navigation buttons (limited to 64 bytes for callback data)."""
+    buttons = []
+    row = []
+    query_slug = query[:20]
+    
+    if page > 0:
+        prev_data = f"f:{query_slug}:{page-1}" if is_filter else f"p:{page-1}:{query_slug}"
+        row.append({"text": "⬅️ Prev", "callback_data": prev_data})
+        
+    if page < total_pages - 1:
+        next_data = f"f:{query_slug}:{page+1}" if is_filter else f"p:{page+1}:{query_slug}"
+        row.append({"text": "Next ➡️", "callback_data": next_data})
+        
+    if row:
+        buttons.append(row)
+        
+    buttons.append([{"text": "📱 Main Menu", "callback_data": "menu"}])
+    return {"inline_keyboard": buttons}
+
+
+def format_posted_ago(job_date) -> str:
+    """Calculate the human-readable time elapsed since job posting."""
+    if not job_date:
+        return "recently"
+    if isinstance(job_date, str):
+        try:
+            dt = datetime.fromisoformat(job_date.replace("Z", "+00:00"))
+        except Exception:
+            return "recently"
+    else:
+        dt = job_date
+        
+    delta = datetime.now(dt.tzinfo or timezone.utc) - dt
+    if delta.days <= 0:
+        return "today"
+    elif delta.days == 1:
+        return "1 day ago"
+    else:
+        return f"{delta.days} days ago"
+
+
+def format_jobs_page(jobs: List[Job], query: str, page: int, per_page: int = 5, title_prefix: str = "Search") -> str:
+    """Format a clean, concise page of jobs for Telegram message view."""
+    total = len(jobs)
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    start = page * per_page
+    end = min(start + per_page, total)
+    
+    import html
+    header = f"🔍 <b>{title_prefix} for: \"{html.escape(query)}\"</b> (Page {page + 1} of {total_pages})\n\n"
+    
+    lines = [header]
+    if total == 0:
+        lines.append("<i>No matching jobs found.</i>")
+    else:
+        for idx, j in enumerate(jobs[start:end], start=start+1):
+            title = html.escape(j.title or "Unknown Role")
+            company = html.escape(j.company or "Unknown Company")
+            location = html.escape(j.location or "Remote")
+            ago = format_posted_ago(j.date)
+            apply_url = j.url or ""
+            
+            line = (
+                f"{idx}. 💼 <b>{title}</b>\n"
+                f"   🏢 {company} | 📍 {location}\n"
+                f"   ⏳ {ago} | 🔗 <a href='{apply_url}'>Apply</a>\n\n"
+            )
+            lines.append(line)
+            
+    return "".join(lines)
+
+
 async def notify_telegram(jobs: List[Job]) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
@@ -940,7 +1111,6 @@ async def notify_telegram(jobs: List[Job]) -> None:
     
     if filter_mode == "filtered":
         agent_prof = load_profile()
-        # Enrich, score, and filter
         enriched_jobs = []
         for j in jobs:
             try:
@@ -960,7 +1130,6 @@ async def notify_telegram(jobs: List[Job]) -> None:
             location = j.location or "Remote/Global"
             apply_url = j.url or ""
             
-            # Clean up HTML characters
             import html
             title = html.escape(title)
             company = html.escape(company)
@@ -968,11 +1137,11 @@ async def notify_telegram(jobs: List[Job]) -> None:
             
             desc_snippet = ""
             if j.description:
-                clean_desc = html.escape(j.description).replace("\n", " ").strip()
-                if len(clean_desc) > 200:
-                    desc_snippet = f"\n📝 <b>Description:</b> {clean_desc[:200]}...\n"
+                raw_desc = clean_description(j.description)
+                if len(raw_desc) > 200:
+                    desc_snippet = f"\n📝 <b>Description:</b> {html.escape(raw_desc[:200])}...\n"
                 else:
-                    desc_snippet = f"\n📝 <b>Description:</b> {clean_desc}\n"
+                    desc_snippet = f"\n📝 <b>Description:</b> {html.escape(raw_desc)}\n"
                     
             text = (
                 f"📢 <b>New Job Alert</b>\n\n"
@@ -1005,7 +1174,6 @@ async def notify_telegram(jobs: List[Job]) -> None:
                 
             try:
                 await client.post(url, json=payload)
-                # Small sleep to avoid Telegram rate limits (max 30/second)
                 await asyncio.sleep(0.5)
             except Exception as e:
                 logging.error(f"Error sending Telegram notification: {e}")
@@ -1037,6 +1205,86 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
     except Exception:
         return {"ok": False, "error": "Invalid JSON"}
         
+    callback_query = update.get("callback_query")
+    if callback_query:
+        callback_id = callback_query.get("id")
+        data = (callback_query.get("data") or "").strip()
+        message = callback_query.get("message", {})
+        chat_id = message.get("chat", {}).get("id")
+        message_id = message.get("message_id")
+        thread_id = message.get("message_thread_id")
+        
+        if not chat_id or not message_id:
+            return {"ok": True}
+            
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                json={"callback_query_id": callback_id}
+            )
+            
+        async def edit_reply(reply_text: str, reply_markup: dict = None):
+            payload = {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": reply_text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+            if reply_markup:
+                payload["reply_markup"] = reply_markup
+            url = f"https://api.telegram.org/bot{token}/editMessageText"
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json=payload)
+                
+        if data == "menu":
+            menu_msg = (
+                "🤖 <b>Job Search Menu</b>\n\n"
+                "Select a pre-filtered location category or trigger a fresh scrape using the options below."
+            )
+            await edit_reply(menu_msg, make_main_menu_keyboard())
+            
+        elif data == "trigger_refresh":
+            await edit_reply("🔄 <b>Scraper Triggered!</b> Running job scrapers in the background. Fresh matches will be posted here soon...", make_main_menu_keyboard())
+            background_tasks.add_task(run_background_refresh)
+            
+        elif data.startswith("f:"):
+            parts = data.split(":")
+            if len(parts) == 3:
+                _, filter_key, page_str = parts
+                page = int(page_str)
+                all_jobs = storage.load_jobs()
+                matched = filter_jobs_by_key(all_jobs, filter_key)
+                matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
+                
+                total_pages = (len(matched) + 4) // 5 if matched else 1
+                text = format_jobs_page(matched, filter_key, page, per_page=5, title_prefix="Category Filter")
+                keyboard = make_pagination_keyboard(filter_key, page, total_pages, is_filter=True)
+                await edit_reply(text, keyboard)
+                
+        elif data.startswith("p:"):
+            parts = data.split(":", 2)
+            if len(parts) == 3:
+                _, page_str, query = parts
+                page = int(page_str)
+                all_jobs = storage.load_jobs()
+                matched = []
+                for j in all_jobs:
+                    title = j.title or ""
+                    company = j.company or ""
+                    description = j.description or ""
+                    q_lower = query.lower()
+                    if q_lower in title.lower() or q_lower in company.lower() or q_lower in description.lower():
+                        matched.append(j)
+                        
+                matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
+                total_pages = (len(matched) + 4) // 5 if matched else 1
+                text = format_jobs_page(matched, query, page, per_page=5, title_prefix="Search Results")
+                keyboard = make_pagination_keyboard(query, page, total_pages, is_filter=False)
+                await edit_reply(text, keyboard)
+                
+        return {"ok": True}
+
     message = update.get("message")
     if not message:
         return {"ok": True}
@@ -1051,13 +1299,15 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
         
     import html
     
-    async def send_reply(reply_text: str):
+    async def send_reply(reply_text: str, reply_markup: dict = None):
         payload = {
             "chat_id": chat_id,
             "text": reply_text,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         if thread_id is not None:
             payload["message_thread_id"] = thread_id
             
@@ -1065,20 +1315,27 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
         async with httpx.AsyncClient() as client:
             await client.post(url, json=payload)
 
-    if text.startswith("/start") or text.startswith("/help"):
-        help_msg = (
-            "🤖 <b>Job Alert Bot Assistant</b>\n\n"
-            "Here are my commands:\n"
-            "🔍 <code>/search &lt;keyword&gt;</code> - Search matching jobs in database\n"
+    if text.startswith("/start") or text.startswith("/help") or text == "/menu":
+        menu_msg = (
+            "🤖 <b>Welcome to Job Search Assistant Bot!</b>\n\n"
+            "Use the interactive menu below to select jobs by category, or use the text commands:\n\n"
+            "🔍 <code>/fetch &lt;keyword&gt;</code> - Search and page through matching jobs\n"
             "🔄 <code>/refresh</code> - Trigger background scraping of all boards\n"
-            "ℹ️ <code>/help</code> - Show this help menu"
+            "ℹ️ <code>/help</code> - Show this menu"
         )
-        await send_reply(help_msg)
+        await send_reply(menu_msg, make_main_menu_keyboard())
         
-    elif text.startswith("/search"):
-        query = text[7:].strip()
+    elif text.startswith("/fetch") or text.startswith("/search"):
+        # Determine query
+        cmd_len = 7 if text.startswith("/search") else 6
+        query = text[cmd_len:].strip()
         if not query:
-            await send_reply("❌ Please provide a keyword. Example: <code>/search react</code>")
+            # Send menu
+            menu_msg = (
+                "🤖 <b>Job Search Menu</b>\n\n"
+                "Select a pre-filtered location category or trigger a fresh scrape using the options below."
+            )
+            await send_reply(menu_msg, make_main_menu_keyboard())
             return {"ok": True}
             
         await send_reply(f"🔍 Searching database for: <b>{html.escape(query)}</b>...")
@@ -1094,32 +1351,14 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
                 matched.append(j)
                 
         matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
-        
-        if not matched:
-            await send_reply(f"ℹ️ No matching jobs found for '<b>{html.escape(query)}</b>'.")
-            return {"ok": True}
-            
-        reply_lines = [f"🎯 <b>Found {len(matched)} matches (showing top 5):</b>\n"]
-        for j in matched[:5]:
-            title = html.escape(j.title or "Unknown Role")
-            company = html.escape(j.company or "Unknown Company")
-            location = html.escape(j.location or "Remote/Global")
-            apply_url = j.url or ""
-            
-            line = (
-                f"💼 <b>{title}</b>\n"
-                f"🏢 {company} | 📍 {location}\n"
-                f"🔗 <a href='{apply_url}'>Apply</a>\n"
-            )
-            reply_lines.append(line)
-            
-        await send_reply("\n".join(reply_lines))
+        total_pages = (len(matched) + 4) // 5 if matched else 1
+        text_resp = format_jobs_page(matched, query, 0, per_page=5, title_prefix="Search Results")
+        keyboard = make_pagination_keyboard(query, 0, total_pages, is_filter=False)
+        await send_reply(text_resp, keyboard)
         
     elif text.startswith("/refresh"):
         await send_reply("🔄 <b>Scraper Triggered!</b> Running job scrapers in the background. Fresh matches will be posted here soon...")
         background_tasks.add_task(run_background_refresh)
-        
-    return {"ok": True}
 
 
 @app.post("/refresh", response_model=JobsResponse)

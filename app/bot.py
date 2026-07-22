@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from .models import Job
-from .storage import load_jobs, save_jobs
+from .storage import load_jobs, save_jobs, DB_FILE
 from .scraper import scrape_all
 from .agent import load_profile, filter_jobs, enrich_and_score
 
@@ -15,38 +15,32 @@ logger = logging.getLogger(__name__)
 
 
 import sqlite3
-from pathlib import Path
 from typing import Tuple
 
-DB_DIR = Path(os.environ.get("JOBS_SCRAPER_DATA_DIR", "data"))
-DB_FILE = DB_DIR / "bot_config.db"
 VALID_TOPICS = {
     "pune", "bangalore", "mumbai", "hyderabad", "chennai", "delhi_ncr",
     "india_remote", "apac_remote", "global_remote", "apac_jobs", "visa_sponsored",
     "data_analytics", "python_developer", "data_scientist", "ml_ai", "data_engineering"
 }
 
-
-def init_bot_db() -> None:
-    """Initialize SQLite database for bot configurations."""
-    DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_FILE)
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS topic_threads (
-                topic TEXT PRIMARY KEY,
-                thread_id INTEGER,
-                linked_by TEXT,
-                linked_at TEXT
-            )
-        """)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-# Auto-initialize database on module import
-init_bot_db()
+TOPIC_FRIENDLY_NAMES = {
+    "pune": "🏢 Pune Jobs",
+    "bangalore": "🏢 Bangalore Jobs",
+    "mumbai": "🏢 Mumbai Jobs",
+    "hyderabad": "🏢 Hyderabad Jobs",
+    "chennai": "🏢 Chennai Jobs",
+    "delhi_ncr": "🏢 Delhi-NCR Jobs",
+    "india_remote": "🇮🇳 India Remote",
+    "apac_remote": "🌏 APAC Remote",
+    "global_remote": "🌍 Global Remote",
+    "apac_jobs": "🌏 APAC Jobs",
+    "visa_sponsored": "🛂 Visa Sponsored",
+    "data_analytics": "📊 Data Analytics",
+    "python_developer": "🐍 Python Developer",
+    "data_scientist": "🧪 Data Scientist (Jr)",
+    "ml_ai": "🤖 ML / AI (Jr)",
+    "data_engineering": "💾 Data Engineering"
+}
 
 
 def get_linked_thread_id(topic: str) -> int | None:
@@ -229,6 +223,35 @@ def filter_jobs_by_key(jobs: List[Job], key: str) -> List[Job]:
         elif k == "all":
             out.append(j)
     return out
+
+
+def make_link_menu_keyboard(thread_id: int) -> dict:
+    """Generate inline buttons for all valid topics to map to the current thread."""
+    buttons = []
+    sorted_topics = sorted(list(VALID_TOPICS))
+    
+    row = []
+    for topic in sorted_topics:
+        friendly = TOPIC_FRIENDLY_NAMES.get(topic, topic)
+        
+        linked_tid = get_linked_thread_id(topic)
+        button_text = friendly
+        if linked_tid is not None:
+            if linked_tid == thread_id:
+                button_text = f"✅ {friendly}"
+            else:
+                button_text = f"🔄 {friendly} (T:{linked_tid})"
+                
+        row.append({"text": button_text, "callback_data": f"lnk:{topic}:{thread_id}"})
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+            
+    if row:
+        buttons.append(row)
+        
+    buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_link"}])
+    return {"inline_keyboard": buttons}
 
 
 def make_main_menu_keyboard() -> dict:
@@ -517,6 +540,35 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
                 keyboard = make_pagination_keyboard(query, page, total_pages, is_filter=False)
                 await edit_reply(text, keyboard)
                 
+        elif data.startswith("lnk:"):
+            parts = data.split(":")
+            if len(parts) == 3:
+                _, topic, target_thread_str = parts
+                target_thread_id = int(target_thread_str)
+                user_name = callback_query.get("from", {}).get("first_name", "User")
+                
+                success, old_thread = link_topic_to_thread(topic, target_thread_id, user_name)
+                topic_friendly = TOPIC_FRIENDLY_NAMES.get(topic, topic)
+                
+                if old_thread is not None and old_thread != target_thread_id:
+                    chat_stripped = str(chat_id).replace("-100", "")
+                    new_thread_link = f"https://t.me/c/{chat_stripped}/{target_thread_id}"
+                    
+                    payload_old = {
+                        "chat_id": chat_id,
+                        "text": f"📢 Topic <b>{topic_friendly}</b> has been unlinked from this thread and linked to the <a href='{new_thread_link}'>new thread</a> by {user_name}!",
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                        "message_thread_id": old_thread
+                    }
+                    async with httpx.AsyncClient() as client:
+                        await client.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload_old)
+                        
+                await edit_reply(f"✅ Linked topic <b>{topic_friendly}</b> to this thread!")
+                
+        elif data == "cancel_link":
+            await edit_reply("❌ Topic linking cancelled.")
+                
         return {"ok": True}
 
     message = update.get("message")
@@ -576,7 +628,11 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
     elif text.startswith("/link"):
         topic = text[5:].strip().lower()
         if not topic:
-            await send_reply("⚠️ Usage: <code>/link &lt;topic&gt;</code>\nExample: <code>/link python_developer</code>")
+            if thread_id is None:
+                await send_reply("⚠️ Please run this command inside a specific topic thread to link it.")
+                return {"ok": True}
+            menu_msg = "🔗 <b>Select a topic to link to this thread:</b>"
+            await send_reply(menu_msg, make_link_menu_keyboard(thread_id))
             return {"ok": True}
             
         if topic not in VALID_TOPICS:
@@ -589,17 +645,25 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             return {"ok": True}
             
         old_thread = get_linked_thread_id(topic)
+        topic_friendly = TOPIC_FRIENDLY_NAMES.get(topic, topic)
         if old_thread == thread_id:
-            await send_reply(f"✅ Topic <code>{topic}</code> is already linked to this thread.")
+            await send_reply(f"✅ Topic <b>{topic_friendly}</b> is already linked to this thread.")
         elif old_thread is not None:
-            await send_reply(
-                f"⚠️ Topic <b>{topic}</b> is already linked to another thread ID (<code>{old_thread}</code>).\n\n"
-                f"To unlink it from the old thread and link it here, type:\n"
-                f"<code>/unlink_and_link {topic}</code>"
+            # Re-link automatically with notify redirection
+            unlink_topic(topic)
+            link_topic_to_thread(topic, thread_id, user_name)
+            
+            chat_stripped = str(chat_id).replace("-100", "")
+            new_thread_link = f"https://t.me/c/{chat_stripped}/{thread_id}"
+            
+            await send_to_thread(
+                old_thread,
+                f"📢 Topic <b>{topic_friendly}</b> has been unlinked from this thread and linked to the <a href='{new_thread_link}'>new thread</a> by {user_name}!"
             )
+            await send_reply(f"✅ Re-linked topic <b>{topic_friendly}</b> to this thread! (Moved from old thread <code>{old_thread}</code>).")
         else:
             link_topic_to_thread(topic, thread_id, user_name)
-            await send_reply(f"✅ Linked topic <code>{topic}</code> to this thread!")
+            await send_reply(f"✅ Linked topic <b>{topic_friendly}</b> to this thread!")
 
     elif text.startswith("/unlink_and_link"):
         topic = text[16:].strip().lower()
@@ -612,14 +676,15 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
         
         chat_stripped = str(chat_id).replace("-100", "")
         new_thread_link = f"https://t.me/c/{chat_stripped}/{thread_id}"
+        topic_friendly = TOPIC_FRIENDLY_NAMES.get(topic, topic)
         
         if old_thread is not None:
             await send_to_thread(
                 old_thread,
-                f"📢 Topic <b>{topic}</b> has been unlinked from this thread and linked to the <a href='{new_thread_link}'>new thread</a> by {user_name}!"
+                f"📢 Topic <b>{topic_friendly}</b> has been unlinked from this thread and linked to the <a href='{new_thread_link}'>new thread</a> by {user_name}!"
             )
             
-        await send_reply(f"✅ Re-linked topic <b>{topic}</b> to this thread! (Unlinked from old thread <code>{old_thread}</code>).")
+        await send_reply(f"✅ Re-linked topic <b>{topic_friendly}</b> to this thread! (Unlinked from old thread <code>{old_thread}</code>).")
 
     elif text.startswith("/unlink"):
         topic = text[7:].strip().lower()
@@ -628,25 +693,27 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             return {"ok": True}
             
         old_thread = unlink_topic(topic)
+        topic_friendly = TOPIC_FRIENDLY_NAMES.get(topic, topic)
         if old_thread is not None:
-            await send_reply(f"✅ Unlinked topic <code>{topic}</code> from thread <code>{old_thread}</code>.")
+            await send_reply(f"✅ Unlinked topic <b>{topic_friendly}</b> from thread <code>{old_thread}</code>.")
         else:
-            await send_reply(f"ℹ️ Topic <code>{topic}</code> was not linked.")
+            await send_reply(f"ℹ️ Topic <b>{topic_friendly}</b> was not linked.")
 
     elif text.startswith("/status") or text.startswith("/topics"):
         mappings = get_all_linked_topics()
         if not mappings:
-            await send_reply("📊 <b>No topics are currently linked to any threads.</b>\nUse <code>/link &lt;topic&gt;</code> inside a thread to map it.")
+            await send_reply("📊 <b>No topics are currently linked to any threads.</b>\nUse <code>/link</code> inside a thread to map it.")
             return {"ok": True}
             
         chat_stripped = str(chat_id).replace("-100", "")
         lines = ["📊 <b>Current Topic Mappings:</b>\n"]
         for m in mappings:
             t = m["topic"]
+            friendly = TOPIC_FRIENDLY_NAMES.get(t, t)
             tid = m["thread_id"]
             user = m["linked_by"]
             thread_link = f"https://t.me/c/{chat_stripped}/{tid}"
-            lines.append(f"• <b>{t}</b>: <a href='{thread_link}'>Thread {tid}</a> (linked by {user})")
+            lines.append(f"• <b>{friendly}</b>: <a href='{thread_link}'>Thread {tid}</a> (linked by {user})")
             
         await send_reply("\n".join(lines))
 

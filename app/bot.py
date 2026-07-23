@@ -471,6 +471,12 @@ async def notify_telegram(jobs: List[Job]) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=10.0) as client:
         for j in jobs:
+            # Skip low score / international on-site jobs
+            score = getattr(j, "match_score", None)
+            if score is not None and score < 30.0:
+                logger.info(f"Skipping Telegram alert for low-match job: {j.title} (Score: {score}%)")
+                continue
+
             title = j.title or "Unknown Role"
             company = j.company or "Unknown Company"
             location = j.location or "Remote/Global"

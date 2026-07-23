@@ -1194,7 +1194,7 @@ async def rssjobs_proxy(
         # Parse RSS feed
         feed = feedparser.parse(xml_content)
 
-        if feed.bozo and feed.bozo_exception:
+        if feed.bozo and feed.bozo_exception and not feed.entries:
             logger.warning(f"RSS parse error for rssjobs.app: {feed.bozo_exception}")
             return JSONResponse(
                 status_code=200,

@@ -2957,19 +2957,17 @@ SCRAPER_REGISTRY = {
     "remotive": scrape_remotive_api,
     "remotive_rss": scrape_remotive_rss,
     "remotive_data": scrape_remotive_data_feed,
-    "remotive_ai_ml": scrape_remotive_ai_ml_feed,
     "remote_co": scrape_remote_co,
     "jobspresso": scrape_jobspresso,
     "himalayas": scrape_himalayas,
     "authentic_jobs": scrape_authentic_jobs,
-    "hiring_cafe": scrape_hiring_cafe,
     "arbeitnow": scrape_arbeitnow,
     "jobicy": scrape_jobicy_api,
     "workingnomads": scrape_workingnomads,
     "justremote": scrape_justremote,
     "custom_rss": scrape_custom_rss,
     # Removed (dead): wellfound (403), indeed_rss (404), stackoverflow (403),
-    #                  dailyremote (404), remoteindian (404)
+    #                  dailyremote (404), remoteindian (404), hiring_cafe (401), remotive_ai_ml (404)
 }
 
 

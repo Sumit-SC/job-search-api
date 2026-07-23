@@ -1493,16 +1493,18 @@ async def debug_telegram() -> dict:
     clean_token = token.strip('"').strip("'")
     clean_chat_id = chat_id.strip('"').strip("'")
     
+    masked_chat_id = f"*******{clean_chat_id[-4:]}" if len(clean_chat_id) > 4 else "****"
+    
     status = {
         "configured": {
             "token_present": bool(token),
             "chat_id_present": bool(chat_id),
             "token_length": len(token),
-            "chat_id": chat_id
+            "chat_id": masked_chat_id
         },
         "cleaned": {
             "token_length": len(clean_token),
-            "chat_id": clean_chat_id
+            "chat_id": masked_chat_id
         }
     }
     
@@ -1522,11 +1524,11 @@ async def debug_telegram() -> dict:
             return {
                 "ok": res.status_code == 200,
                 "status_code": res.status_code,
-                "telegram_response": res.json() if res.status_code == 200 else res.text,
-                "status": status
+                "status": status,
+                "message": "Message sent successfully" if res.status_code == 200 else f"Failed to send: {res.text[:100]}"
             }
     except Exception as e:
-        return {"ok": False, "error": str(e), "status": status}
+        return {"ok": False, "error": "Internal transmission error", "status": status}
 
 
 @app.get("/setup-webhook")

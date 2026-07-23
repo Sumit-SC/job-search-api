@@ -9,6 +9,13 @@ from .models import Job
 
 logger = logging.getLogger(__name__)
 
+def stable_hash(text: str | int | float) -> int:
+    import hashlib
+    h = hashlib.md5(str(text).encode('utf-8')).hexdigest()
+    return int(h[:8], 16)
+
+hash = stable_hash
+
 # python-jobspy (PyPI) supports only these sites; others cause KeyError in map_str_to_site
 JOBSPY_SUPPORTED_SITES = [
     "indeed", "linkedin", "zip_recruiter", "glassdoor", "google",

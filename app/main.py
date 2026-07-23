@@ -29,6 +29,13 @@ from fastapi.staticfiles import StaticFiles
 from .models import Job, JobsResponse, GroupedByCurrencyResponse, WebSearchResponse, WebSearchResult
 from .scraper import scrape_all, get_proxy_stats
 from .storage import load_jobs, save_jobs, load_saved_at
+
+def stable_hash(text: str | int | float) -> int:
+    import hashlib
+    h = hashlib.md5(str(text).encode('utf-8')).hexdigest()
+    return int(h[:8], 16)
+
+hash = stable_hash
 from .bot import notify_telegram
 from .cache import (
     get_jobspy_cache,

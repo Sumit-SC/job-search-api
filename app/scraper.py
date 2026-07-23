@@ -2852,7 +2852,101 @@ async def scrape_custom_rss(days: int = 3, query: str | None = None) -> List[Job
     return out
 
 
+async def scrape_rssjobs(days: int = 3, query: str | None = None) -> List[Job]:
+    """
+    Scrape LinkedIn, Stepstone, Glassdoor via rssjobs.app feeds.
+    Dynamically triggers generation first so feeds are populated.
+    """
+    keywords_locations = [
+        ("data analyst", "pune"),
+        ("data analyst", "mumbai"),
+        ("data analyst", "bangalore"),
+        ("data analyst", "remote"),
+        ("machine learning", "remote"),
+        ("data engineer", "remote")
+    ]
+    
+    out: List[Job] = []
+    async with _make_client() as client:
+        for kw, loc in keywords_locations:
+            try:
+                # 1. Trigger the feed creation via POST
+                trigger_url = "https://rssjobs.app/feeds"
+                trigger_data = {
+                    "keywords": kw,
+                    "location": loc
+                }
+                await client.post(
+                    trigger_url,
+                    data=trigger_data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    },
+                    timeout=12.0
+                )
+                
+                # 2. Fetch the feed XML via GET
+                import urllib.parse
+                kw_enc = urllib.parse.quote_plus(kw)
+                loc_enc = urllib.parse.quote_plus(loc)
+                feed_url = f"https://rssjobs.app/feeds?keywords={kw_enc}&location={loc_enc}"
+                
+                xml = await fetch_text(
+                    client,
+                    feed_url,
+                    timeout=20.0,
+                    retries=1
+                )
+                if not xml:
+                    continue
+                    
+                import feedparser
+                feed = feedparser.parse(xml)
+                for entry in feed.entries:
+                    title = getattr(entry, "title", "") or ""
+                    link = getattr(entry, "link", "") or ""
+                    summary = getattr(entry, "summary", "") or ""
+                    published = getattr(entry, "published", "") or ""
+                    
+                    company = "Unknown"
+                    if " at " in title:
+                        parts = title.split(" at ")
+                        company = parts[-1].strip()
+                        title = " at ".join(parts[:-1]).strip()
+                        
+                    dt = _parse_date(published)
+                    if not _within_days(dt, days):
+                        continue
+                        
+                    if query and not _matches_query(title, summary, query):
+                        continue
+                        
+                    if not link:
+                        continue
+                        
+                    guid = getattr(entry, "id", "") or link
+                    job_id = f"rssjobs_{hash(guid)}"
+                    
+                    out.append(Job(
+                        id=job_id,
+                        title=title,
+                        company=company,
+                        location=loc.capitalize(),
+                        url=link,
+                        description=summary,
+                        source=f"rssjobs_{kw.replace(' ', '_')}",
+                        date=dt
+                    ))
+            except Exception as e:
+                logger.error(f"Error scraping rssjobs.app feed for '{kw}' in '{loc}': {e}")
+                
+    logger.info(f"Scraped {len(out)} jobs from rssjobs.app")
+    return out
+
+
 SCRAPER_REGISTRY = {
+    "rssjobs": scrape_rssjobs,
     "greenhouse": scrape_greenhouse,
     "lever": scrape_lever,
     "weworkremotely": scrape_weworkremotely,

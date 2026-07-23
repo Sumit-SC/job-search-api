@@ -1035,6 +1035,37 @@ async def refresh_jobs(
     return response
 
 
+@app.post("/jobs/batch", response_model=JobsResponse)
+async def batch_add_jobs(
+    jobs: List[Job],
+    background_tasks: BackgroundTasks,
+) -> JobsResponse:
+    """
+    Accept a list of jobs, persist them to Turso/SQLite, and notify Telegram if they are new.
+    """
+    if not jobs:
+        return JobsResponse(ok=True, count=0, jobs=[])
+        
+    # Load existing to avoid duplicate Telegram alerts
+    existing_jobs = load_jobs()
+    existing_urls = {j.url for j in existing_jobs if j.url}
+    
+    # Save the incoming jobs (upserts conflict keys automatically)
+    save_jobs(jobs)
+    
+    # Identify brand new listings for Telegram notifications
+    new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
+    if new_jobs and background_tasks:
+        background_tasks.add_task(notify_telegram, new_jobs)
+        
+    return JobsResponse(
+        ok=True,
+        count=len(jobs),
+        jobs=jobs,
+        generated_at=datetime.utcnow()
+    )
+
+
 def _jobs_response_headers(cache_hit: bool, max_age: int = 900) -> dict:
     """Cache-Control and X-Cache headers for job list responses."""
     return {

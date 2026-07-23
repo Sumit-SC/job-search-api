@@ -20,16 +20,23 @@ def execute_write(sql: str, params: tuple = ()) -> None:
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
     
     if url and token:
-        import libsql_client
-        with libsql_client.create_client_sync(url=url, auth_token=token) as client:
-            client.execute(sql, params)
-    else:
-        conn = sqlite3.connect(DB_FILE)
         try:
-            conn.execute(sql, params)
-            conn.commit()
-        finally:
-            conn.close()
+            import libsql_client
+            with libsql_client.create_client_sync(url=url, auth_token=token) as client:
+                client.execute(sql, params)
+                return
+        except Exception as e:
+            print(f"ERROR: Turso write failed: {e}. Falling back to local SQLite.")
+            
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        conn.execute(sql, params)
+        conn.commit()
+    except Exception as e:
+        print(f"ERROR: Local SQLite write failed: {e}")
+        raise e
+    finally:
+        conn.close()
 
 
 def execute_read(sql: str, params: tuple = ()) -> list[dict]:
@@ -38,23 +45,29 @@ def execute_read(sql: str, params: tuple = ()) -> list[dict]:
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
     
     if url and token:
-        import libsql_client
-        with libsql_client.create_client_sync(url=url, auth_token=token) as client:
-            rs = client.execute(sql, params)
-            out = []
-            for row in rs.rows:
-                out.append({col: row[idx] for idx, col in enumerate(rs.columns)})
-            return out
-    else:
-        conn = sqlite3.connect(DB_FILE)
-        conn.row_factory = sqlite3.Row
         try:
-            cursor = conn.cursor()
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-            return [dict(r) for r in rows]
-        finally:
-            conn.close()
+            import libsql_client
+            with libsql_client.create_client_sync(url=url, auth_token=token) as client:
+                rs = client.execute(sql, params)
+                out = []
+                for row in rs.rows:
+                    out.append({col: row[idx] for idx, col in enumerate(rs.columns)})
+                return out
+        except Exception as e:
+            print(f"ERROR: Turso read failed: {e}. Falling back to local SQLite.")
+            
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"ERROR: Local SQLite read failed: {e}")
+        raise e
+    finally:
+        conn.close()
 
 
 def execute_batch_write(statements: list[tuple[str, tuple]]) -> None:
@@ -65,18 +78,25 @@ def execute_batch_write(statements: list[tuple[str, tuple]]) -> None:
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
     
     if url and token:
-        import libsql_client
-        with libsql_client.create_client_sync(url=url, auth_token=token) as client:
-            client.batch(statements)
-    else:
-        conn = sqlite3.connect(DB_FILE)
         try:
-            cursor = conn.cursor()
-            for sql, params in statements:
-                cursor.execute(sql, params)
-            conn.commit()
-        finally:
-            conn.close()
+            import libsql_client
+            with libsql_client.create_client_sync(url=url, auth_token=token) as client:
+                client.batch(statements)
+                return
+        except Exception as e:
+            print(f"ERROR: Turso batch write failed: {e}. Falling back to local SQLite.")
+            
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        cursor = conn.cursor()
+        for sql, params in statements:
+            cursor.execute(sql, params)
+        conn.commit()
+    except Exception as e:
+        print(f"ERROR: Local SQLite batch write failed: {e}")
+        raise e
+    finally:
+        conn.close()
 
 
 def init_db() -> None:

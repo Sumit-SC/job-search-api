@@ -517,9 +517,15 @@ async def notify_telegram(jobs: List[Job]) -> None:
             
             # Classify job topics
             matched_topics = classify_job_topics(j)
+            sent_threads = set()
             
-            # If no topics matched, send to main channel ID with no thread
-            if not matched_topics:
+            for topic in matched_topics:
+                thread_id = get_topic_thread_id(topic)
+                if thread_id is not None:
+                    sent_threads.add(thread_id)
+            
+            # If no threads are mapped, fall back to main channel/group
+            if not sent_threads:
                 payload = {
                     "chat_id": chat_id,
                     "text": text,
@@ -530,26 +536,21 @@ async def notify_telegram(jobs: List[Job]) -> None:
                     await client.post(url, json=payload)
                     await asyncio.sleep(0.5)
                 except Exception as e:
-                    logger.error(f"Error sending Telegram notification: {e}")
+                    logger.error(f"Error sending Telegram notification to main chat: {e}")
             else:
-                # Send to each matched topic thread (avoiding duplicate thread sends)
-                sent_threads = set()
-                for topic in matched_topics:
-                    thread_id = get_topic_thread_id(topic)
-                    if thread_id is not None and thread_id not in sent_threads:
-                        payload = {
-                            "chat_id": chat_id,
-                            "text": text,
-                            "parse_mode": "HTML",
-                            "disable_web_page_preview": True,
-                            "message_thread_id": thread_id
-                        }
-                        try:
-                            await client.post(url, json=payload)
-                            sent_threads.add(thread_id)
-                            await asyncio.sleep(0.5)
-                        except Exception as e:
-                            logger.error(f"Error sending Telegram notification to thread {thread_id} for topic {topic}: {e}")
+                for thread_id in sent_threads:
+                    payload = {
+                        "chat_id": chat_id,
+                        "text": text,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                        "message_thread_id": thread_id
+                    }
+                    try:
+                        await client.post(url, json=payload)
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        logger.error(f"Error sending Telegram notification to thread {thread_id}: {e}")
 
 
 async def run_background_refresh() -> None:

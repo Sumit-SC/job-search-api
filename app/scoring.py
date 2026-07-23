@@ -183,14 +183,16 @@ def calculate_match_score(
     
     # Location match (0-30 points)
     location_lower = job_location.lower()
-    if any(kw in location_lower for kw in REMOTE_KEYWORDS):
+    is_remote = any(kw in location_lower for kw in REMOTE_KEYWORDS) or "anywhere" in location_lower
+    is_india = "india" in location_lower or any(city in location_lower for city in INDIAN_CITIES)
+    
+    if is_remote:
         score += 30
-    elif any(kw in location_lower for kw in INDIA_REMOTE_KEYWORDS):
-        score += 25
-    elif any(city in location_lower for city in INDIAN_CITIES):
+    elif is_india:
         score += 20
     else:
-        score += 10  # Other locations
+        # On-site / Hybrid international roles are irrelevant for candidate in India - filter out!
+        return 0.0
     
     # YOE match (0-30 points)
     if job_yoe_min is not None or job_yoe_max is not None:

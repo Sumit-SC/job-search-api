@@ -16,8 +16,8 @@ DB_FILE = DATA_DIR / "jobs.db"
 
 def execute_write(sql: str, params: tuple = ()) -> None:
     """Execute a write command on Turso if configured, falling back to local SQLite."""
-    url = os.environ.get("TURSO_DATABASE_URL", "").strip()
-    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+    url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
+    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
     if url and token:
         try:
@@ -41,8 +41,8 @@ def execute_write(sql: str, params: tuple = ()) -> None:
 
 def execute_read(sql: str, params: tuple = ()) -> list[dict]:
     """Execute a read query on Turso if configured, falling back to local SQLite."""
-    url = os.environ.get("TURSO_DATABASE_URL", "").strip()
-    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+    url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
+    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
     if url and token:
         try:
@@ -74,8 +74,8 @@ def execute_batch_write(statements: list[tuple[str, tuple]]) -> None:
     """Execute a batch of write statements on Turso if configured, falling back to local SQLite."""
     if not statements:
         return
-    url = os.environ.get("TURSO_DATABASE_URL", "").strip()
-    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+    url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
+    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
     if url and token:
         try:

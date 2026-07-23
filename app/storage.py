@@ -193,6 +193,7 @@ def save_jobs(jobs: List[Job]) -> None:
             
         tags_json = json.dumps(j.tags) if j.tags else None
         visa_int = 1 if j.visa_sponsorship is True else (0 if j.visa_sponsorship is False else None)
+        url_str = str(j.url) if j.url else None
         
         date_str = None
         if j.date:
@@ -227,7 +228,7 @@ def save_jobs(jobs: List[Job]) -> None:
                 scraped_at=excluded.scraped_at
         """
         params = (
-            j.id, j.title, j.company, j.location, j.url, j.description, j.source, date_str, tags_json,
+            j.id, j.title, j.company, j.location, url_str, j.description, j.source, date_str, tags_json,
             j.match_score, j.yoe_min, j.yoe_max, j.salary_min, j.salary_max, j.currency,
             visa_int, j.job_type, now_str
         )

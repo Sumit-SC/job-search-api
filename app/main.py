@@ -966,6 +966,23 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
     return await handle_tg_webhook(update, background_tasks)
 
 
+async def run_refresh_task(q: str, days: int, enable_headless: bool, normalized_mode: str, source_list: list[str] | None):
+    try:
+        # Load existing jobs before scraping to compute the difference for Telegram notifications
+        existing_jobs = load_jobs()
+        existing_urls = {j.url for j in existing_jobs if j.url}
+        
+        jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
+        save_jobs(jobs)
+        
+        # Identify new jobs
+        new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
+        if new_jobs:
+            await notify_telegram(new_jobs)
+    except Exception as e:
+        logger.error(f"Error in background refresh task: {e}", exc_info=True)
+
+
 @app.post("/refresh", response_model=JobsResponse)
 async def refresh_jobs(
     background_tasks: BackgroundTasks,
@@ -996,50 +1013,18 @@ async def refresh_jobs(
 
     enable_headless = headless if headless is not None else True
     
-    # Load existing jobs before scraping to compute the difference for Telegram notifications
-    existing_jobs = load_jobs()
-    existing_urls = {j.url for j in existing_jobs if j.url}
+    # Launch scraper in background to avoid Render 50s timeout and GitHub Action connection drops
+    background_tasks.add_task(
+        run_refresh_task,
+        q, days, enable_headless, normalized_mode, source_list
+    )
     
-    jobs = await scrape_all(days=days, query=q, enable_headless=enable_headless, mode=normalized_mode, sources=source_list)
-    save_jobs(jobs)
-    
-    # Identify new jobs
-    new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
-    if new_jobs and background_tasks:
-        background_tasks.add_task(notify_telegram, new_jobs)
-    
-    response = JobsResponse(ok=True, count=len(jobs), jobs=jobs, generated_at=datetime.utcnow())
-    
-    # Add system stats if requested
-    if include_stats:
-        try:
-            import psutil
-            memory = psutil.virtual_memory()
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            process = psutil.Process()
-            process_memory_mb = process.memory_info().rss / (1024 * 1024)
-            
-            import os
-            from pathlib import Path
-            data_dir = os.environ.get("JOBS_SCRAPER_DATA_DIR", "data")
-            disk_path = Path(data_dir) if Path(data_dir).exists() else Path("/")
-            disk = psutil.disk_usage(str(disk_path))
-            
-            from .models import SystemStats
-            response.system = SystemStats(
-                cpu_percent=round(cpu_percent, 2),
-                memory_percent=round(memory.percent, 2),
-                memory_used_mb=round(memory.used / (1024 * 1024), 2),
-                memory_total_mb=round(memory.total / (1024 * 1024), 2),
-                disk_percent=round(disk.percent, 2),
-                disk_used_gb=round(disk.used / (1024 * 1024 * 1024), 2),
-                disk_total_gb=round(disk.total / (1024 * 1024 * 1024), 2),
-                process_memory_mb=round(process_memory_mb, 2),
-            )
-        except Exception:
-            pass  # Stats optional
-    
-    return response
+    return JobsResponse(
+        ok=True,
+        count=0,
+        jobs=[],
+        generated_at=datetime.utcnow()
+    )
 
 
 @app.post("/jobs/batch", response_model=JobsResponse)

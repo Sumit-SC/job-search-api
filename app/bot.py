@@ -7,14 +7,16 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from .models import Job
-from .storage import load_jobs, save_jobs, DB_FILE, save_user_profile, get_user_profile
+from .storage import (
+    load_jobs, save_jobs, DB_FILE, save_user_profile, get_user_profile,
+    get_linked_thread_id, link_topic_to_thread, unlink_topic, get_all_linked_topics
+)
 from .scraper import scrape_all
 from .agent import load_profile, filter_jobs, enrich_and_score
 
 logger = logging.getLogger(__name__)
 
 
-import sqlite3
 from typing import Tuple
 
 VALID_TOPICS = {
@@ -45,77 +47,6 @@ TOPIC_FRIENDLY_NAMES = {
     "ml_ai": "🤖 ML / AI (Jr/Mid)",
     "data_engineering": "💾 Data Engineering"
 }
-
-
-def get_linked_thread_id(topic: str) -> int | None:
-    """Get the thread ID linked to a topic from SQLite DB."""
-    conn = sqlite3.connect(DB_FILE)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT thread_id FROM topic_threads WHERE topic = ?", (topic.lower().strip(),))
-        row = cursor.fetchone()
-        return row[0] if row else None
-    finally:
-        conn.close()
-
-
-def link_topic_to_thread(topic: str, thread_id: int, user_info: str) -> Tuple[bool, Optional[int]]:
-    """Link a topic to a thread ID. Returns: (success, old_thread_id)."""
-    topic_clean = topic.lower().strip()
-    old_thread = get_linked_thread_id(topic_clean)
-    
-    conn = sqlite3.connect(DB_FILE)
-    try:
-        cursor = conn.cursor()
-        now_str = datetime.utcnow().isoformat()
-        cursor.execute("""
-            INSERT INTO topic_threads (topic, thread_id, linked_by, linked_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(topic) DO UPDATE SET
-                thread_id=excluded.thread_id,
-                linked_by=excluded.linked_by,
-                linked_at=excluded.linked_at
-        """, (topic_clean, thread_id, user_info, now_str))
-        conn.commit()
-        return True, old_thread
-    finally:
-        conn.close()
-
-
-def unlink_topic(topic: str) -> Optional[int]:
-    """Unlink a topic. Returns the unlinked thread ID if existed."""
-    topic_clean = topic.lower().strip()
-    old_thread = get_linked_thread_id(topic_clean)
-    if old_thread is None:
-        return None
-        
-    conn = sqlite3.connect(DB_FILE)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM topic_threads WHERE topic = ?", (topic_clean,))
-        conn.commit()
-        return old_thread
-    finally:
-        conn.close()
-
-
-def get_all_linked_topics() -> List[dict]:
-    """Get all topic mappings from DB."""
-    conn = sqlite3.connect(DB_FILE)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT topic, thread_id, linked_by, linked_at FROM topic_threads")
-        rows = cursor.fetchall()
-        return [
-            {
-                "topic": r[0],
-                "thread_id": r[1],
-                "linked_by": r[2],
-                "linked_at": r[3]
-            } for r in rows
-        ]
-    finally:
-        conn.close()
 
 
 def clean_description(desc_html: str) -> str:

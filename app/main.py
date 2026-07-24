@@ -153,6 +153,20 @@ async def startup_event() -> None:
     # asyncio.create_task(schedule_scraping_loop())
     from .bot import keep_awake_loop
     asyncio.create_task(keep_awake_loop())
+    
+    # Automatically register webhook on boot when deployed on Render
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+    if render_url:
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
+        if token:
+            webhook_url = f"{render_url.rstrip('/')}/tg-webhook"
+            tg_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.post(tg_url)
+                    logging.info(f"Telegram Webhook Auto-Config: URL={webhook_url} | Response={res.text}")
+            except Exception as e:
+                logging.error(f"Telegram Webhook Auto-Config failed: {e}")
 
 
 @app.get("/websearch", response_model=WebSearchResponse)

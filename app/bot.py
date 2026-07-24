@@ -205,6 +205,213 @@ def get_topic_thread_id(topic: str) -> int | None:
     return int(val) if val.isdigit() else None
 
 
+async def is_sender_admin(chat_id: int | str, user_id: int, token: str) -> bool:
+    """Check if the user is an admin or owner of the chat."""
+    admin_env = os.environ.get("TELEGRAM_ADMIN_USER_ID", "").strip()
+    if admin_env and str(user_id) == admin_env:
+        return True
+        
+    if isinstance(chat_id, (int, float)) and chat_id > 0:
+        return True
+    if isinstance(chat_id, str) and not chat_id.startswith("-"):
+        return True
+
+    url = f"https://api.telegram.org/bot{token}/getChatAdministrators"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(url, params={"chat_id": chat_id})
+            if res.ok:
+                data = res.json()
+                admins = data.get("result", [])
+                for a in admins:
+                    if a.get("user", {}).get("id") == user_id:
+                        return True
+    except Exception as e:
+        logger.error(f"Error checking admin status: {e}")
+        
+    return False
+
+
+async def autodelete_message(chat_id: int | str, message_id: int, delay_seconds: int = 120) -> None:
+    """Wait for delay_seconds and delete the specified message."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
+    if not token or not message_id:
+        return
+    await asyncio.sleep(delay_seconds)
+    url = f"https://api.telegram.org/bot{token}/deleteMessage"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(url, json={"chat_id": chat_id, "message_id": message_id})
+    except Exception as e:
+        logger.warning(f"Failed to autodelete message {message_id} in chat {chat_id}: {e}")
+
+
+def html_to_telegraph_nodes(html_str: str) -> list:
+    """Translate simple HTML tags into Telegraph node JSON structure."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_str, "html.parser")
+    except Exception:
+        # Fallback if bs4 is missing
+        return [{"tag": "p", "children": [html_str]}]
+    
+    def _element_to_node(el):
+        if el.name is None:
+            return str(el)
+            
+        node = {"tag": el.name}
+        attrs = {}
+        if el.name == "a" and el.has_attr("href"):
+            attrs["href"] = el["href"]
+        if attrs:
+            node["attrs"] = attrs
+            
+        children = []
+        for child in el.children:
+            n = _element_to_node(child)
+            if n:
+                children.append(n)
+        if children:
+            node["children"] = children
+        return node
+
+    nodes = []
+    for child in soup.children:
+        n = _element_to_node(child)
+        if n:
+            nodes.append(n)
+    return nodes
+
+
+async def create_telegraph_page(title: str, jobs: list) -> str:
+    """Create a Telegraph page containing jobs and return the URL."""
+    import json
+    
+    html_lines = ["<h3>Latest Matching Jobs</h3><hr>"]
+    for idx, j in enumerate(jobs, 1):
+        j_title = j.title or "Unknown Role"
+        company = j.company or "Unknown Company"
+        location = j.location or "Remote"
+        url = j.url or "#"
+        score = f" | Match: {int(j.match_score)}%" if getattr(j, "match_score", None) is not None else ""
+        yoe = f" | {j.yoe_min}-{j.yoe_max} YOE" if getattr(j, "yoe_min", None) is not None else ""
+        
+        desc = ""
+        if j.description:
+            desc_cleaned = clean_description(j.description)
+            desc = f"<p><i>{html.escape(desc_cleaned[:300])}...</i></p>"
+            
+        html_lines.append(
+            f"<p><b>{idx}. <a href='{url}'>{html.escape(j_title)}</a></b><br>"
+            f"🏢 {html.escape(company)} | 📍 {html.escape(location)}{score}{yoe}<br>"
+            f"{desc}</p><hr>"
+        )
+        
+    html_content = "".join(html_lines)
+    nodes = html_to_telegraph_nodes(html_content)
+    
+    url = "https://api.telegra.ph/createPage"
+    payload = {
+        "title": title[:30],
+        "author_name": "Job Bot",
+        "content": json.dumps(nodes),
+        "return_content": True
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(url, json=payload)
+            if res.ok:
+                data = res.json()
+                if data.get("ok"):
+                    return data.get("result", {}).get("url", "")
+    except Exception as e:
+        logger.error(f"Error creating Telegraph page: {e}")
+        
+    return ""
+
+
+def get_system_stats_summary() -> str:
+    """Retrieve server resource details and active DB rows count."""
+    import psutil
+    try:
+        cpu = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        
+        try:
+            disk = psutil.disk_usage("/")
+            disk_line = f"💾 <b>Disk Space:</b> {disk.percent}% ({round(disk.free/(1024**3), 1)}GB free)\n"
+        except Exception:
+            disk_line = "💾 <b>Disk Space:</b> Not accessible (Render Sandbox)\n"
+        
+        from .storage import execute_read
+        res = execute_read("SELECT count(*) as cnt FROM jobs")
+        db_rows = res[0]["cnt"] if res else 0
+        
+        return (
+            f"📊 <b>System Resource Stats</b>\n\n"
+            f"💻 <b>CPU Usage:</b> {cpu}%\n"
+            f"🧠 <b>Memory:</b> {mem.percent}% ({round(mem.used/(1024**2), 1)}MB / {round(mem.total/(1024**2), 1)}MB)\n"
+            f"{disk_line}"
+            f"🗃️ <b>Database Rows:</b> {db_rows} jobs in storage\n"
+        )
+    except Exception as e:
+        return f"❌ Failed to fetch system stats: {e}"
+
+
+async def check_api_status() -> str:
+    """Test health of core API dependencies."""
+    host_render = os.environ.get("RENDER_EXTERNAL_URL", "https://job-search-api-w042.onrender.com").strip()
+    vercel_base = "https://playground-serveless.vercel.app"
+    
+    out = ["🌐 <b>API & Integration Status</b>\n"]
+    
+    # 1. Render API Status
+    try:
+        t0 = asyncio.get_event_loop().time()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{host_render}/health")
+            latency = int((asyncio.get_event_loop().time() - t0) * 1000)
+            if res.status_code == 200:
+                out.append(f"🟢 <b>Render API:</b> Healthy (Latency: {latency}ms)")
+            else:
+                out.append(f"🔴 <b>Render API:</b> HTTP {res.status_code} Error")
+    except Exception as e:
+        out.append(f"🔴 <b>Render API:</b> Offline ({type(e).__name__})")
+        
+    # 2. Vercel Sources Debug status
+    try:
+        t0 = asyncio.get_event_loop().time()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{vercel_base}/api/jobs-sources-debug")
+            latency = int((asyncio.get_event_loop().time() - t0) * 1000)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("ok"):
+                    out.append(f"🟢 <b>Vercel Scrapers:</b> Active (Latency: {latency}ms)")
+                else:
+                    out.append(f"🟡 <b>Vercel Scrapers:</b> Partially degraded (HTTP 200, ok=false)")
+            else:
+                out.append(f"🔴 <b>Vercel Scrapers:</b> HTTP {res.status_code} Error")
+    except Exception as e:
+        out.append(f"🔴 <b>Vercel Scrapers:</b> Offline ({type(e).__name__})")
+        
+    # 3. OMDb Poster API status
+    try:
+        t0 = asyncio.get_event_loop().time()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{vercel_base}/api/omdb", params={"t": "Inception"})
+            latency = int((asyncio.get_event_loop().time() - t0) * 1000)
+            if res.status_code == 200:
+                out.append(f"🟢 <b>OMDb Poster Cache:</b> Active (Latency: {latency}ms)")
+            else:
+                out.append(f"🔴 <b>OMDb Poster Cache:</b> HTTP {res.status_code} Error")
+    except Exception as e:
+        out.append(f"🔴 <b>OMDb Poster Cache:</b> Offline ({type(e).__name__})")
+        
+    return "\n".join(out)
+
+
 def filter_jobs_by_key(jobs: List[Job], key: str) -> List[Job]:
     """Filter jobs by pre-defined location categories."""
     out = []
@@ -744,7 +951,7 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
     if not chat_id or not text:
         return {"ok": True}
         
-    async def send_reply(reply_text: str, reply_markup: dict = None):
+    async def send_reply(reply_text: str, reply_markup: dict = None) -> int | None:
         payload = {
             "chat_id": chat_id,
             "text": reply_text,
@@ -757,8 +964,14 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             payload["message_thread_id"] = thread_id
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        async with httpx.AsyncClient() as client:
-            await client.post(url, json=payload)
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.post(url, json=payload)
+                if res.ok:
+                    return res.json().get("result", {}).get("message_id")
+        except Exception as e:
+            logger.error(f"Error in send_reply: {e}")
+        return None
 
     user_name = message.get("from", {}).get("first_name", "User")
     
@@ -776,6 +989,59 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
 
     user_id = message.get("from", {}).get("id")
     first_name = message.get("from", {}).get("first_name", "User")
+    cmd_msg_id = message.get("message_id")
+
+    if text.startswith("/ping") or text.startswith("/stats") or text.startswith("/apistats"):
+        is_admin = await is_sender_admin(chat_id, user_id, token)
+        if not is_admin:
+            warn_id = await send_reply("❌ This command is restricted to administrators.")
+            if warn_id:
+                asyncio.create_task(autodelete_message(chat_id, warn_id, 10))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 10))
+            return {"ok": True}
+            
+        if text.startswith("/ping"):
+            rep_id = await send_reply("🟢 Bot is active and healthy!")
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 120))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 120))
+            return {"ok": True}
+            
+        elif text.startswith("/stats"):
+            stats_msg = get_system_stats_summary()
+            rep_id = await send_reply(stats_msg)
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 120))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 120))
+            return {"ok": True}
+            
+        elif text.startswith("/apistats"):
+            rep_id = await send_reply("🔍 Checking integration health status...")
+            api_msg = await check_api_status()
+            if rep_id:
+                edit_url = f"https://api.telegram.org/bot{token}/editMessageText"
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(edit_url, json={
+                            "chat_id": chat_id,
+                            "message_id": rep_id,
+                            "text": api_msg,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        })
+                except Exception:
+                    pass
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 120))
+            else:
+                new_rep = await send_reply(api_msg)
+                if new_rep:
+                    asyncio.create_task(autodelete_message(chat_id, new_rep, 120))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 120))
+            return {"ok": True}
 
     if text.startswith("/profile"):
         prof = get_user_profile(user_id)

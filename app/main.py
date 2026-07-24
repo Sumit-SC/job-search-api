@@ -1117,6 +1117,18 @@ async def jobspy_jobs(
     return JSONResponse(content=payload, headers=_jobs_response_headers(False))
 
 
+def sanitize_xml_content(xml_str: str) -> str:
+    """Sanitize raw XML content to fix common validation and parsing issues before feedparser runs."""
+    if not xml_str:
+        return ""
+    import re
+    # Replace unescaped & with &amp;
+    xml_str = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#[xX][a-fA-F0-9]+);)', '&amp;', xml_str)
+    # Remove invalid XML 1.0 control characters
+    xml_str = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_str)
+    return xml_str
+
+
 def _is_rssjobs_feed_url(url: str) -> bool:
     """Allow only rssjobs.app / www.rssjobs.app for feed_url (security)."""
     try:
@@ -1183,6 +1195,8 @@ async def rssjobs_proxy(
                 headers=_jobs_response_headers(False),
             )
 
+        # Sanitize raw XML from external feed
+        xml_content = sanitize_xml_content(xml_content)
         # Parse RSS feed
         feed = feedparser.parse(xml_content)
 

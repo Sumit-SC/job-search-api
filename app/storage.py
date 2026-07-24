@@ -229,14 +229,32 @@ def load_jobs() -> List[Job]:
     return jobs
 
 
+def stable_hash(text: str | int | float) -> int:
+    import hashlib
+    h = hashlib.md5(str(text).encode('utf-8')).hexdigest()
+    return int(h[:8], 16)
+
+
 def save_jobs(jobs: List[Job]) -> None:
     """Save a list of jobs, updating existing ones on conflict."""
     now_str = datetime.utcnow().isoformat() + "Z"
     statements = []
+    
+    # Deduplicate by URL in-memory first to avoid batch execution errors
+    seen_urls = set()
+    unique_jobs = []
     for j in jobs:
-        if not j.id:
+        if not j.url:
             continue
-            
+        url_str = str(j.url).strip()
+        if url_str in seen_urls:
+            continue
+        seen_urls.add(url_str)
+        # Force a stable, deterministic ID based on the unique URL to guarantee ON CONFLICT(id) matches ON CONFLICT(url)
+        j.id = f"job_{stable_hash(url_str)}"
+        unique_jobs.append(j)
+        
+    for j in unique_jobs:
         tags_json = json.dumps(j.tags) if j.tags else None
         visa_int = 1 if j.visa_sponsorship is True else (0 if j.visa_sponsorship is False else None)
         url_str = str(j.url) if j.url else None

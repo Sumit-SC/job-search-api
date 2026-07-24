@@ -123,7 +123,8 @@ def init_db() -> None:
             currency TEXT,
             visa_sponsorship INTEGER, -- 0=False, 1=True, null=None
             job_type TEXT,
-            scraped_at TEXT
+            scraped_at TEXT,
+            notified INTEGER DEFAULT 0
         )
     """)
     
@@ -148,10 +149,17 @@ def init_db() -> None:
         )
     """)
     
+    # Schema migration: Add notified column if missing on existing installations
+    try:
+        execute_write("ALTER TABLE jobs ADD COLUMN notified INTEGER DEFAULT 0")
+    except Exception:
+        pass
+        
     # Indexes
     try:
         execute_write("CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source)")
         execute_write("CREATE INDEX IF NOT EXISTS idx_jobs_date ON jobs(date)")
+        execute_write("CREATE INDEX IF NOT EXISTS idx_jobs_notified ON jobs(notified)")
     except Exception:
         pass
 

@@ -972,6 +972,70 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
     return {"ok": True}
 
 
+@app.post("/api/notify-recent")
+async def trigger_notify_recent(
+    limit: int = Query(50, ge=1, le=100),
+    force: bool = Query(False, description="If true, notify even if already notified before")
+) -> dict:
+    """Manually trigger sending unnotified or recent jobs to Telegram channel/topics."""
+    try:
+        from .storage import execute_read, execute_write
+        from .bot import notify_telegram
+        
+        # Load jobs
+        if force:
+            rows = execute_read("SELECT * FROM jobs ORDER BY date DESC LIMIT ?", (limit,))
+        else:
+            rows = execute_read("SELECT * FROM jobs WHERE notified = 0 OR notified IS NULL ORDER BY date DESC LIMIT ?", (limit,))
+            
+        if not rows:
+            return {"ok": True, "count": 0, "message": "No new unnotified jobs found."}
+            
+        jobs: List[Job] = []
+        for row in rows:
+            try:
+                tags = json.loads(row.get("tags")) if row.get("tags") else []
+                visa_val = row.get("visa_sponsorship")
+                visa = True if visa_val == 1 else (False if visa_val == 0 else None)
+                dt = datetime.fromisoformat(row.get("date")) if row.get("date") else None
+                
+                jobs.append(Job(
+                    id=row.get("id"),
+                    title=row.get("title"),
+                    company=row.get("company"),
+                    location=row.get("location"),
+                    url=row.get("url"),
+                    description=row.get("description"),
+                    source=row.get("source"),
+                    date=dt,
+                    tags=tags,
+                    match_score=row.get("match_score"),
+                    yoe_min=row.get("yoe_min"),
+                    yoe_max=row.get("yoe_max"),
+                    salary_min=row.get("salary_min"),
+                    salary_max=row.get("salary_max"),
+                    currency=row.get("currency"),
+                    visa_sponsorship=visa,
+                    job_type=row.get("job_type")
+                ))
+            except Exception:
+                continue
+                
+        if not jobs:
+            return {"ok": True, "count": 0, "message": "No valid jobs to parse."}
+            
+        await notify_telegram(jobs)
+        
+        # Mark as notified
+        for j in jobs:
+            execute_write("UPDATE jobs SET notified = 1 WHERE id = ?", (j.id,))
+            
+        return {"ok": True, "count": len(jobs), "message": f"Successfully notified {len(jobs)} jobs to Telegram."}
+    except Exception as e:
+        logger.error(f"Error triggering manual notify: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 async def run_refresh_task(q: str, days: int, enable_headless: bool, normalized_mode: str, source_list: list[str] | None):
     try:
         # Load existing jobs before scraping to compute the difference for Telegram notifications
@@ -985,6 +1049,12 @@ async def run_refresh_task(q: str, days: int, enable_headless: bool, normalized_
         new_jobs = [j for j in jobs if j.url and j.url not in existing_urls]
         if new_jobs:
             await notify_telegram(new_jobs)
+            from .storage import execute_write
+            for j in new_jobs:
+                try:
+                    execute_write("UPDATE jobs SET notified = 1 WHERE id = ?", (j.id,))
+                except Exception:
+                    pass
     except Exception as e:
         logger.error(f"Error in background refresh task: {e}", exc_info=True)
 

@@ -3,7 +3,7 @@ import html
 import logging
 import asyncio
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 from .models import Job

@@ -7,5 +7,4 @@ python-dateutil==2.9.0.post0
 feedparser==6.0.11
 psutil==5.9.8
 python-jobspy==1.1.82
-libsql-client>=0.5.1; sys_platform != "win32"
-libsql-client<=0.3.1; sys_platform == "win32"
+libsql-client==0.3.1

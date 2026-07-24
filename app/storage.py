@@ -14,12 +14,27 @@ DATA_DIR = Path(os.environ.get("JOBS_SCRAPER_DATA_DIR", "data"))
 DB_FILE = DATA_DIR / "jobs.db"
 
 
+import time
+
+LAST_TURSO_FAILURE = 0.0
+TURSO_COOLDOWN_SECONDS = 300.0  # Bypass Turso for 5 minutes after a failure to prevent massive UI/bot lag
+
+def should_try_turso() -> bool:
+    global LAST_TURSO_FAILURE
+    if time.time() - LAST_TURSO_FAILURE < TURSO_COOLDOWN_SECONDS:
+        return False
+    return True
+
+def record_turso_failure() -> None:
+    global LAST_TURSO_FAILURE
+    LAST_TURSO_FAILURE = time.time()
+
 def execute_write(sql: str, params: tuple = ()) -> None:
     """Execute a write command on Turso if configured, falling back to local SQLite."""
     url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
-    if url and token:
+    if url and token and should_try_turso():
         try:
             import libsql_client
             with libsql_client.create_client_sync(url=url, auth_token=token) as client:
@@ -27,6 +42,7 @@ def execute_write(sql: str, params: tuple = ()) -> None:
                 return
         except Exception as e:
             print(f"ERROR: Turso write failed: {e}. Falling back to local SQLite.")
+            record_turso_failure()
             
     conn = sqlite3.connect(DB_FILE)
     try:
@@ -44,7 +60,7 @@ def execute_read(sql: str, params: tuple = ()) -> list[dict]:
     url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
-    if url and token:
+    if url and token and should_try_turso():
         try:
             import libsql_client
             with libsql_client.create_client_sync(url=url, auth_token=token) as client:
@@ -55,6 +71,7 @@ def execute_read(sql: str, params: tuple = ()) -> list[dict]:
                 return out
         except Exception as e:
             print(f"ERROR: Turso read failed: {e}. Falling back to local SQLite.")
+            record_turso_failure()
             
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -77,7 +94,7 @@ def execute_batch_write(statements: list[tuple[str, tuple]]) -> None:
     url = os.environ.get("TURSO_DATABASE_URL", "").strip().strip('"').strip("'")
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip().strip('"').strip("'")
     
-    if url and token:
+    if url and token and should_try_turso():
         try:
             import libsql_client
             with libsql_client.create_client_sync(url=url, auth_token=token) as client:
@@ -85,6 +102,7 @@ def execute_batch_write(statements: list[tuple[str, tuple]]) -> None:
                 return
         except Exception as e:
             print(f"ERROR: Turso batch write failed: {e}. Falling back to local SQLite.")
+            record_turso_failure()
             
     conn = sqlite3.connect(DB_FILE)
     try:

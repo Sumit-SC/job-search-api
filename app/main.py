@@ -967,7 +967,9 @@ async def tg_webhook(request: Request, background_tasks: BackgroundTasks) -> dic
         return {"ok": False, "error": "Invalid JSON"}
         
     from .bot import handle_tg_webhook
-    return await handle_tg_webhook(update, background_tasks)
+    # Delegate to background task so Telegram gets an instant 200 response (under 2ms)
+    background_tasks.add_task(handle_tg_webhook, update, background_tasks)
+    return {"ok": True}
 
 
 async def run_refresh_task(q: str, days: int, enable_headless: bool, normalized_mode: str, source_list: list[str] | None):

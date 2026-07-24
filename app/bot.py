@@ -435,6 +435,18 @@ def filter_jobs_by_key(jobs: List[Job], key: str) -> List[Job]:
     return out
 
 
+def make_fetch_keyboard() -> dict:
+    """Generate inline buttons for fetch options."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📂 Cached Jobs", "callback_data": "fetch_cached"},
+                {"text": "🔍 Search Query", "callback_data": "fetch_query_help"}
+            ]
+        ]
+    }
+
+
 def make_profile_keyboard() -> dict:
     """Generate inline buttons for editing user profile settings."""
     return {
@@ -823,6 +835,36 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             await edit_reply("🔄 <b>Scraper Triggered!</b> Running job scrapers in the background. Fresh matches will be posted here soon...", make_main_menu_keyboard())
             background_tasks.add_task(run_background_refresh)
             
+        elif data == "fetch_cached":
+            await edit_reply("🔄 Fetching top 100 cached jobs from Turso and creating Telegraph page...")
+            all_jobs = load_jobs()
+            latest_100 = all_jobs[:100]
+            if not latest_100:
+                await edit_reply("❌ No jobs found in the database.", make_fetch_keyboard())
+            else:
+                telegraph_url = await create_telegraph_page("Latest Cached Jobs", latest_100)
+                if telegraph_url:
+                    await edit_reply(
+                        f"📂 <b>Latest 100 Cached Jobs</b>\n\n"
+                        f"I have compiled the latest 100 jobs into a Telegraph page for easy instant-view reading!\n\n"
+                        f"🔗 <a href='{telegraph_url}'>View Job Listings on Telegraph</a>",
+                        make_fetch_keyboard()
+                    )
+                else:
+                    await edit_reply("❌ Failed to publish jobs to Telegraph. Please try again.", make_fetch_keyboard())
+                    
+        elif data == "fetch_query_help":
+            help_msg = (
+                "🔍 <b>How to Query the Database:</b>\n\n"
+                "Use the <code>/query</code> command followed by search keywords and optional flags:\n\n"
+                "<code>/query data analyst -l remote -y 2-4 -d 5</code>\n\n"
+                "<b>Supported Flags:</b>\n"
+                "• <code>-l &lt;location&gt;</code> - Location/city name (e.g. remote, pune)\n"
+                "• <code>-y &lt;yoe&gt;</code> - Years of Experience range (e.g. 2-4, 5)\n"
+                "• <code>-d &lt;days&gt;</code> - Job freshness in days (e.g. 3)"
+            )
+            await edit_reply(help_msg, make_fetch_keyboard())
+
         elif data.startswith("f:"):
             parts = data.split(":")
             if len(parts) == 3:
@@ -1196,46 +1238,171 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
             
         await send_reply("\n".join(lines))
 
-    elif text.startswith("/fetch") or text.startswith("/search"):
+    elif text.startswith("/fetch"):
+        cmd_parts = text.split(maxsplit=1)
+        query = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+        if query:
+            text = f"/query {query}"
+        else:
+            await send_reply("📂 <b>Select an option to retrieve job listings:</b>", make_fetch_keyboard())
+            return {"ok": True}
+
+    if text.startswith("/query"):
+        cmd_parts = text.split(maxsplit=1)
+        query_text = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+        if not query_text:
+            await send_reply("⚠️ Usage: <code>/query keywords [-l location] [-y yoe] [-d days]</code>")
+            return {"ok": True}
+            
+        import re
+        loc_match = re.search(r'-l\s+([^-]+)', query_text)
+        yoe_match = re.search(r'-y\s+([^-]+)', query_text)
+        days_match = re.search(r'-d\s+([^-]+)', query_text)
+        
+        loc_val = loc_match.group(1).strip() if loc_match else None
+        yoe_val = yoe_match.group(1).strip() if yoe_match else None
+        days_val = days_match.group(1).strip() if days_match else None
+        
+        clean_kw = query_text
+        if loc_match:
+            clean_kw = clean_kw.replace(loc_match.group(0), "")
+        if yoe_match:
+            clean_kw = clean_kw.replace(yoe_match.group(0), "")
+        if days_match:
+            clean_kw = clean_kw.replace(days_match.group(0), "")
+        clean_kw = clean_kw.strip()
+        
+        sql_parts = []
+        params = []
+        if clean_kw:
+            sql_parts.append("(title LIKE ? OR company LIKE ? OR description LIKE ?)")
+            params.extend([f"%{clean_kw}%", f"%{clean_kw}%", f"%{clean_kw}%"])
+        else:
+            sql_parts.append("1=1")
+            
+        if loc_val:
+            sql_parts.append("location LIKE ?")
+            params.append(f"%{loc_val}%")
+            
+        if yoe_val:
+            range_match = re.match(r'^(\d+)\s*[-–—to]\s*(\d+)$', yoe_val)
+            if range_match:
+                min_y = int(range_match.group(1))
+                max_y = int(range_match.group(2))
+                sql_parts.append("((yoe_min IS NULL OR yoe_min <= ?) AND (yoe_max IS NULL OR yoe_max >= ?))")
+                params.extend([max_y, min_y])
+            elif yoe_val.isdigit():
+                y = int(yoe_val)
+                sql_parts.append("(yoe_min IS NULL OR yoe_min <= ?)")
+                params.append(y)
+                
+        if days_val and days_val.isdigit():
+            cutoff = (datetime.utcnow() - timedelta(days=int(days_val))).isoformat() + "Z"
+            sql_parts.append("scraped_at >= ?")
+            params.append(cutoff)
+            
+        sql_where = " AND ".join(sql_parts)
+        sql = f"SELECT * FROM jobs WHERE {sql_where} ORDER BY date DESC LIMIT 100"
+        
+        from .storage import execute_read
+        try:
+            import json
+            rows = execute_read(sql, tuple(params))
+        except Exception as e:
+            await send_reply(f"❌ Database query failed: {e}")
+            return {"ok": True}
+            
+        jobs_found = []
+        for row in rows:
+            tags_raw = row.get("tags")
+            tags = json.loads(tags_raw) if tags_raw else []
+            visa_val = row.get("visa_sponsorship")
+            visa = True if visa_val == 1 else (False if visa_val == 0 else None)
+            date_str = row.get("date")
+            dt = datetime.fromisoformat(date_str) if date_str else None
+            
+            jobs_found.append(Job(
+                id=row.get("id"),
+                title=row.get("title"),
+                company=row.get("company"),
+                location=row.get("location"),
+                url=row.get("url"),
+                description=row.get("description"),
+                source=row.get("source"),
+                date=dt,
+                tags=tags,
+                match_score=row.get("match_score"),
+                yoe_min=row.get("yoe_min"),
+                yoe_max=row.get("yoe_max"),
+                salary_min=row.get("salary_min"),
+                salary_max=row.get("salary_max"),
+                currency=row.get("currency"),
+                visa_sponsorship=visa,
+                job_type=row.get("job_type")
+            ))
+            
+        if not jobs_found:
+            await send_reply(f"🔍 No matching jobs found in the database.")
+        elif len(jobs_found) <= 5:
+            formatted = format_jobs_page(jobs_found, f"Query: {clean_kw or 'All'}", 0, per_page=5, title_prefix="Database Results")
+            await send_reply(formatted)
+        else:
+            telegraph_url = await create_telegraph_page(f"Query Results: {clean_kw or 'All'}", jobs_found)
+            if telegraph_url:
+                await send_reply(
+                    f"🔍 <b>Query Results for: \"{html.escape(clean_kw or 'All')}\"</b>\n\n"
+                    f"Found <b>{len(jobs_found)}</b> matching jobs!\n\n"
+                    f"🔗 <a href='{telegraph_url}'>View matching jobs on Telegraph</a>"
+                )
+            else:
+                formatted = format_jobs_page(jobs_found, f"Query: {clean_kw or 'All'}", 0, per_page=5, title_prefix="Database Results")
+                await send_reply(formatted)
+        return {"ok": True}
+
+    elif text.startswith("/search"):
         cmd_parts = text.split(maxsplit=1)
         query = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
         if not query:
-            menu_msg = (
-                "🤖 <b>Job Search Menu</b>\n\n"
-                "Select a pre-filtered location category or trigger a fresh scrape using the options below."
-            )
-            await send_reply(menu_msg, make_main_menu_keyboard())
+            await send_reply("⚠️ Usage: <code>/search &lt;keywords&gt;</code>")
             return {"ok": True}
             
-        await send_reply(f"🔍 Searching database for: <b>{html.escape(query)}</b>...")
+        await send_reply(f"🔄 <b>Live search initiated for: \"{html.escape(query)}\"</b>\nRunning scrapers in the background (takes 10-20s)...")
         
-        all_jobs = load_jobs()
-        matched = []
-        for j in all_jobs:
-            title = j.title or ""
-            company = j.company or ""
-            description = j.description or ""
-            q_lower = query.lower()
-            if q_lower in title.lower() or q_lower in company.lower() or q_lower in description.lower():
-                matched.append(j)
+        async def run_live_search_task():
+            try:
+                jobs = await scrape_all(days=3, query=query, enable_headless=False, mode="rss")
+                save_jobs(jobs)
                 
-        profile = get_user_profile(user_id)
-        if profile:
-            scored_matched = []
-            for j in matched:
-                score, reasons = calculate_user_match_score(j, profile)
-                setattr(j, "user_match_score", score)
-                setattr(j, "user_match_reasons", reasons)
-                scored_matched.append(j)
-            scored_matched.sort(key=lambda x: (getattr(x, "user_match_score", 0.0), getattr(x, "date", datetime.utcnow()) or datetime.utcnow()), reverse=True)
-            matched = scored_matched
-        else:
-            matched.sort(key=lambda x: getattr(x, "date", datetime.utcnow()) or datetime.utcnow(), reverse=True)
-            
-        total_pages = (len(matched) + 4) // 5 if matched else 1
-        text_resp = format_jobs_page(matched, query, 0, per_page=5, title_prefix="Search Results")
-        keyboard = make_pagination_keyboard(query, 0, total_pages, is_filter=False)
-        await send_reply(text_resp, keyboard)
+                matched = []
+                for j in jobs:
+                    title = j.title or ""
+                    company = j.company or ""
+                    desc = j.description or ""
+                    q_lower = query.lower()
+                    if q_lower in title.lower() or q_lower in company.lower() or q_lower in desc.lower():
+                        matched.append(j)
+                        
+                if not matched:
+                    await send_reply(f"ℹ️ Live search finished. No new matches found for: <b>{html.escape(query)}</b>")
+                elif len(matched) <= 5:
+                    formatted = format_jobs_page(matched, query, 0, per_page=5, title_prefix="Live Search Matches")
+                    await send_reply(formatted)
+                else:
+                    telegraph_url = await create_telegraph_page(f"Live Search: {query}", matched)
+                    if telegraph_url:
+                        await send_reply(
+                            f"🟢 <b>Live Search completed for: \"{html.escape(query)}\"</b>\n"
+                            f"Scraped and saved <b>{len(matched)}</b> jobs!\n\n"
+                            f"🔗 <a href='{telegraph_url}'>View live jobs on Telegraph</a>"
+                        )
+                    else:
+                        formatted = format_jobs_page(matched, query, 0, per_page=5, title_prefix="Live Search Matches")
+                        await send_reply(formatted)
+            except Exception as e:
+                logger.error(f"Error in live search task: {e}")
+                await send_reply(f"❌ Live search encountered an error: {e}")
+                
+        background_tasks.add_task(run_live_search_task)
         
     elif text.startswith("/refresh"):
         await send_reply("🔄 <b>Scraper Triggered!</b> Running job scrapers in the background. Fresh matches will be posted here soon...")

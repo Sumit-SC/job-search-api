@@ -72,11 +72,14 @@ def normalize_datetime(dt: datetime | None) -> datetime | None:
     return dt
 
 # Configure logging
+from logging.handlers import RotatingFileHandler
+os.makedirs("data", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(sys.stdout),
+        RotatingFileHandler("data/app.log", maxBytes=5*1024*1024, backupCount=1, encoding="utf-8")
     ]
 )
 logger = logging.getLogger(__name__)

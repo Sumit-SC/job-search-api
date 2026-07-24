@@ -1033,6 +1033,109 @@ async def handle_tg_webhook(update: dict, background_tasks) -> dict:
     first_name = message.get("from", {}).get("first_name", "User")
     cmd_msg_id = message.get("message_id")
 
+    if text.startswith("/sudo"):
+        admin_env = os.environ.get("TELEGRAM_ADMIN_USER_ID", "").strip()
+        if not admin_env or str(user_id) != admin_env:
+            warn_id = await send_reply("❌ Unauthorized. This command requires sudo owner privileges.")
+            if warn_id:
+                asyncio.create_task(autodelete_message(chat_id, warn_id, 10))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 10))
+            return {"ok": True}
+            
+        parts = text.split(maxsplit=2)
+        subcmd = parts[1].lower().strip() if len(parts) > 1 else ""
+        
+        if subcmd == "restart":
+            await send_reply("🔄 <b>Sudo Command Received.</b> Restarting bot container process...")
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 5))
+            import signal
+            os.kill(os.getpid(), signal.SIGTERM)
+            return {"ok": True}
+            
+        elif subcmd == "logs":
+            log_path = Path("data/app.log")
+            if not log_path.exists():
+                rep_id = await send_reply("ℹ️ No log file found at <code>data/app.log</code>.")
+            else:
+                try:
+                    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                    last_30 = "".join(lines[-30:])
+                    escaped_logs = html.escape(last_30)
+                    rep_id = await send_reply(f"📜 <b>Latest 30 Log Lines:</b>\n<pre><code>{escaped_logs}</code></pre>")
+                except Exception as e:
+                    rep_id = await send_reply(f"❌ Failed to read log file: {e}")
+                    
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 120))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 120))
+            return {"ok": True}
+            
+        elif subcmd == "clear_cache":
+            try:
+                from .main import get_rssjobs_cache, get_jobs_cache
+                get_rssjobs_cache().clear()
+                get_jobs_cache().clear()
+                rep_id = await send_reply("🧹 <b>Cache Cleared:</b> Cleaned RSS and job board JSON cache.")
+            except Exception as e:
+                rep_id = await send_reply(f"❌ Failed to clear cache: {e}")
+                
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 15))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 15))
+            return {"ok": True}
+            
+        elif subcmd == "query_db":
+            sql_query = parts[2].strip() if len(parts) > 2 else ""
+            if not sql_query:
+                rep_id = await send_reply("⚠️ Usage: <code>/sudo query_db &lt;SQL Query&gt;</code>")
+                if rep_id:
+                    asyncio.create_task(autodelete_message(chat_id, rep_id, 15))
+                if cmd_msg_id:
+                    asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 15))
+                return {"ok": True}
+                
+            from .storage import execute_read, execute_write
+            try:
+                if sql_query.strip().lower().startswith(("select", "pragma", "explain")):
+                    rows = execute_read(sql_query)
+                    if not rows:
+                        rep_id = await send_reply("ℹ️ Query executed. 0 rows returned.")
+                    else:
+                        json_str = json.dumps(rows[:10], indent=2)
+                        row_count = len(rows)
+                        note = f"\n\n<i>Showing top 10 of {row_count} rows.</i>" if row_count > 10 else ""
+                        rep_id = await send_reply(f"🗃️ <b>Query Results ({row_count} rows):</b>\n<pre><code>{html.escape(json_str)}</code></pre>{note}")
+                else:
+                    execute_write(sql_query)
+                    rep_id = await send_reply("✅ Write query executed successfully on DB.")
+            except Exception as e:
+                rep_id = await send_reply(f"❌ DB execution error: {html.escape(str(e))}")
+                
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 120))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 120))
+            return {"ok": True}
+            
+        else:
+            rep_id = await send_reply(
+                "ℹ️ <b>Sudo Control Panel:</b>\n\n"
+                "• <code>/sudo restart</code> - Force restart the server\n"
+                "• <code>/sudo logs</code> - Read last 30 log lines\n"
+                "• <code>/sudo clear_cache</code> - Wipe API and RSS cache\n"
+                "• <code>/sudo query_db &lt;SQL&gt;</code> - Execute raw SQL query"
+            )
+            if rep_id:
+                asyncio.create_task(autodelete_message(chat_id, rep_id, 30))
+            if cmd_msg_id:
+                asyncio.create_task(autodelete_message(chat_id, cmd_msg_id, 30))
+            return {"ok": True}
+
     if text.startswith("/ping") or text.startswith("/stats") or text.startswith("/apistats"):
         is_admin = await is_sender_admin(chat_id, user_id, token)
         if not is_admin:

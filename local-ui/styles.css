@@ -61,6 +61,11 @@
     color: var(--text-primary);
 }
 
+select option {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+}
+
 [data-theme="dark"] .card {
     border: 1px solid var(--border-color);
 }
